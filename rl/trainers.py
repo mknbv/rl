@@ -24,6 +24,9 @@ class Trajectory(object):
     act_type = self.policy.distribution.dtype.as_numpy_dtype
     self.actions = np.zeros([num_timesteps] + act_shape, dtype=act_type)
     self.episode_count = 0
+    self.policy_states = None
+    if self.policy.get_state() is not None:
+      self.policy_states = [None] * self.num_timesteps
     if isinstance(self.policy, rl.policies.CNNPolicy):
       self.summaries = tf.summary.image("Trajectory/observation",
                                         self.policy.inputs)
@@ -60,6 +63,8 @@ class Trajectory(object):
     num_timesteps = self.num_timesteps
     for i in range(num_timesteps):
       self.observations[i] = self.latest_observation
+      if self.policy_states is not None:
+        self.policy_states[i] = self.policy.get_state()
       self._update_stats(i, self.latest_observation, sess)
       self.latest_observation, self.rewards[i], self.resets[i], info =\
           self.env.step(self.actions[i])
@@ -214,6 +219,8 @@ class A2CTrainer(object):
               self.advantages: advantages,
               self.value_targets: value_targets
           }
+          if self.policy.get_state() is not None:
+            feed_dict[self.policy.state_in] = self.trajectory.policy_states[0]
           if i % summary_period == 0:
             fetches = [self.loss,
                        self.policy_loss,

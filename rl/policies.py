@@ -1,4 +1,5 @@
 import gym.spaces as spaces
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
@@ -31,12 +32,16 @@ class ValueFunctionPolicy(object):
   def reset(self):
     pass
 
+  def get_state(self):
+    return None
+
   def var_list(self):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                              scope=self.scope.name)
 
   def gradient_preprocessing(self, grad_list):
     return grad_list
+
 
 class SimplePolicy(ValueFunctionPolicy):
   def __init__(self, observation_space, action_space, name=None):
@@ -106,9 +111,13 @@ class UniverseStarterPolicy(CNNPolicy):
     step_size = tf.shape(self.inputs)[:1]
     lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
     self.state_in = rnn.LSTMStateTuple(
-        c=tf.zeros([1, lstm.state_size.c], tf.float32),
-        h=tf.zeros([1, lstm.state_size.h], tf.float32))
-    self.prev_state = None
+        c=tf.placeholder(tf.float32, [1, lstm.state_size.c]),
+        h=tf.placeholder(tf.float32, [1, lstm.state_size.h]))
+    self.initial_state = rnn.LSTMStateTuple(
+        c=np.zeros(self.state_in.c.shape.as_list()),
+        h=np.zeros(self.state_in.c.shape.as_list())
+      )
+    self.state = self.initial_state
     lstm_outputs, self.state_out = tf.nn.dynamic_rnn(
         lstm, x, initial_state=self.state_in, sequence_length=step_size,
         time_major=False)
@@ -125,18 +134,21 @@ class UniverseStarterPolicy(CNNPolicy):
         kernel_initializer=U.normalized_columns_initializer(1.0),
         name="value_preds")
 
+  def get_state(self):
+    return self.state
+
   def act(self, observation, sess=None):
     if sess is None:
       sess = tf.get_default_session()
     fetches = [self.distribution.sample(), self.value_preds, self.state_out]
     feed_dict = {self.inputs: observation[None, :]}
-    if self.prev_state is not None:
-      feed_dict[self.state_in] = self.prev_state
-    actions, value_preds, self.prev_state = sess.run(fetches, feed_dict)
+    if self.state is not None:
+      feed_dict[self.state_in] = self.state
+    actions, value_preds, self.state = sess.run(fetches, feed_dict)
     return actions[0], value_preds[0]
 
   def reset(self):
-    self.prev_state = None
+    self.state = self.initial_state
 
   def gradient_preprocessing(self, grad_list):
     return tf.clip_by_global_norm(grad_list, 40.0)[0]
