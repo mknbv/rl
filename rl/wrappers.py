@@ -79,7 +79,7 @@ def UniverseStarterImageWrapper():
       if not isinstance(env.unwrapped, AtariEnv):
         raise TypeError("env must be an AtariEnv")
       super(UniverseStarterImageWrapper, self).__init__(env)
-      self.env = ImageCroppingWrapper(34, 0, 159, 159)(env)
+      self.env = ImageCroppingWrapper(34, 0, 160, 160)(env)
       self.observation_space = spaces.Box(low=0, high=1, shape=(42, 42, 1))
 
     def _preprocess_observation(self, obs):

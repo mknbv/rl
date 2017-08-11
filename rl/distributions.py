@@ -42,7 +42,10 @@ class Categorical(BaseDistribution):
   @lazy_function
   def sample(self):
     with tf.variable_scope(self.name, reuse=True):
-      return tf.reshape(tf.multinomial(self.logits, num_samples=1), [-1])
+      # https://github.com/tensorflow/tensorflow/issues/2774
+      # seems to be fixed in tensorflow 1.3
+      logits = self.logits - tf.reduce_max(self.logits, axis=-1, keep_dims=True)
+      return tf.reshape(tf.multinomial(logits, num_samples=1), [-1])
 
   def neglogp(self, x):
     with tf.variable_scope(self.name, reuse=True):
@@ -53,8 +56,8 @@ class Categorical(BaseDistribution):
   def entropy(self):
     with tf.variable_scope(self.name, reuse=True):
       probas = tf.nn.softmax(self.logits)
-      neglogp = -tf.nn.log_softmax(self.logits)
-      return tf.reduce_sum(probas * neglogp, axis=-1)
+      logp = tf.nn.log_softmax(self.logits)
+      return -tf.reduce_sum(probas * logp, axis=-1)
 
 
 class Gaussian(BaseDistribution):

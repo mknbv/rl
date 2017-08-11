@@ -22,8 +22,7 @@ class ValueFunctionPolicy(object):
     self.value_preds = None
 
   def act(self, observation, sess=None):
-    if sess is None:
-      sess = tf.get_default_session()
+    sess = sess or tf.get_default_session()
     actions, value_preds = sess.run(
         [self.distribution.sample(), self.value_preds],
         {self.inputs: observation[None, :]})
@@ -138,14 +137,11 @@ class UniverseStarterPolicy(CNNPolicy):
     return self.state
 
   def act(self, observation, sess=None):
-    if sess is None:
-      sess = tf.get_default_session()
-    fetches = [self.distribution.sample(), self.value_preds, self.state_out]
-    feed_dict = {self.inputs: observation[None, :]}
-    if self.state is not None:
-      feed_dict[self.state_in] = self.state
-    actions, value_preds, self.state = sess.run(fetches, feed_dict)
-    return actions[0], value_preds[0]
+    sess = sess or tf.get_default_session()
+    actions, value_preds, self.state = sess.run(
+        [self.distribution.sample(), self.value_preds, self.state_out],
+        {self.inputs: observation[None, :], self.state_in: self.state})
+    return actions[0], value_preds[0, 0]
 
   def reset(self):
     self.state = self.initial_state

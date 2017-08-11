@@ -110,10 +110,6 @@ class ValueFunctionTrajectory(Trajectory):
 
 
 def gae(policy, trajectory, gamma=0.99, lambda_=0.95, sess=None):
-  if not isinstance(policy, rl.policies.ValueFunctionPolicy):
-    raise TypeError("policy must be an instance of ValueFunctionPolicy")
-  if not isinstance(trajectory, ValueFunctionTrajectory):
-    raise TypeError("trajectory must be an instance of ValueFunctionTrajectory")
   num_timesteps = trajectory.num_timesteps
   gae = np.zeros([num_timesteps])
   gae[-1] = trajectory.rewards[-1] - trajectory.value_preds[-1]
@@ -195,9 +191,14 @@ class A2CTrainer(object):
             summary_period=10,
             checkpoint_period=100,
             checkpoint=None):
-    train_op = tf.group(optimizer.apply_gradients(self.grads_and_vars),
-                        self.global_step.assign_add(1))
-    with tf.Session() as sess, sess.as_default():
+    train_op = tf.group(
+        optimizer.apply_gradients(self.grads_and_vars),
+        self.global_step.assign_add(
+          tf.to_int64(tf.shape(self.policy.inputs)[0]))
+      )
+    config = tf.ConfigProto(intra_op_parallelism_threads=1,
+                            inter_op_parallelism_threads=2)
+    with tf.Session(config=config) as sess, sess.as_default():
       summary_writer = tf.summary.FileWriter(logdir, graph=sess.graph)
       saver = tf.train.Saver()
       save_path = os.path.join(logdir, "checkpoint")
@@ -206,6 +207,7 @@ class A2CTrainer(object):
       else:
         tf.global_variables_initializer().run()
 
+      last_summary_step = -summary_period # always add summary on first step.
       try:
         while self.global_step.eval() < num_steps:
           i = self.global_step.eval()
@@ -221,7 +223,7 @@ class A2CTrainer(object):
           }
           if self.policy.get_state() is not None:
             feed_dict[self.policy.state_in] = self.trajectory.policy_states[0]
-          if i % summary_period == 0:
+          if (i - last_summary_step) > summary_period:
             fetches = [self.loss,
                        self.policy_loss,
                        self.v_loss,
@@ -230,10 +232,13 @@ class A2CTrainer(object):
             loss, policy_loss, v_loss, _, summaries =\
                 sess.run(fetches, feed_dict)
             summary_writer.add_summary(summaries, global_step=i)
-            msg = "Training step #{}:  "\
+            info = "Training step #{}:  "\
                   "Loss: {:.4}, Policy loss: {:.4}, Value loss: {:.4f}"\
-                  .format(i, loss, policy_loss, v_loss)
-            logging.info(msg)
+                  .format(i, loss,
+                      policy_loss / len(self.trajectory.observations),
+                      v_loss / len(self.trajectory.observations))
+            logging.info(info)
+            last_summary_step = i
           else:
             train_op.run(feed_dict)
           if i > 0 and i % checkpoint_period == 0:

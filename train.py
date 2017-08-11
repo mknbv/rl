@@ -23,6 +23,7 @@ def preprocess_wrap(env):
   env = rl.wrappers.LoggingWrapper()(env)
   return env
 
+
 def get_args():
   parser = argparse.ArgumentParser(
       formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -37,7 +38,7 @@ def get_args():
   )
   parser.add_argument(
       "--policy",
-      default="Simple"
+      required=True,
   )
   parser.add_argument(
       "--trajectory-length",
@@ -67,17 +68,17 @@ def get_args():
   parser.add_argument(
       "--num-train-steps",
       type=int,
-      default=int(2.5 * 1e4)
+      default=int(4 * 1e6)
   )
   parser.add_argument(
       "--summary-period",
       type=int,
-      default=10
+      default=500
   )
   parser.add_argument(
       "--checkpoint-period",
       type=int,
-      default=1000
+      default=int(1e6)
   )
   parser.add_argument(
       "--checkpoint",
