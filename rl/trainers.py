@@ -1,48 +1,92 @@
 from collections import namedtuple
+import copy
 from datetime import datetime
 import logging
 import numpy as np
 import os
 import tensorflow as tf
+import threading
+import queue
 
 import rl.policies
 
 
 class Trajectory(object):
-  def __init__(self, env, policy, num_timesteps):
-    self.env = env
-    self.policy = policy
-    self.latest_observation = self.env.reset()
+  def __init__(self, initial_obs, act_shape, act_type, num_timesteps,
+               record_policy_states=False):
+    self.latest_observation = initial_obs
     self.num_timesteps = num_timesteps
-    self.done = False
     obs_shape = list(self.latest_observation.shape)
     obs_type = self.latest_observation.dtype
     self.observations = np.zeros([num_timesteps] + obs_shape, dtype=obs_type)
     self.resets = np.zeros([num_timesteps], dtype=np.bool)
     self.rewards = np.zeros([num_timesteps])
-    act_shape = list(self.policy.distribution.shape[1:])
-    act_type = self.policy.distribution.dtype.as_numpy_dtype
     self.actions = np.zeros([num_timesteps] + act_shape, dtype=act_type)
-    self.episode_count = 0
-    self.policy_states = None
-    if self.policy.get_state() is not None:
+    self.value_preds = np.zeros([self.num_timesteps], dtype=np.float32)
+    if record_policy_states:
       self.policy_states = [None] * self.num_timesteps
+    else:
+      self.policy_states = None
+
+
+class TrajectoryProducer(object):
+  def __init__(self, env, policy, num_timesteps, queue=None):
+    self.env = env
+    self.policy = policy
+    self.act_shape = list(self.policy.distribution.shape[1:])
+    self.act_type = self.policy.distribution.dtype.as_numpy_dtype
+    self.trajectory = Trajectory(
+        env.reset(), self.act_shape, self.act_type, num_timesteps,
+        record_policy_states=self.policy.get_state() is not None)
+    self.episode_count = 1
+    self.last_summary_step = 1
+    self.queue = queue
+    self.summary_writer = None
+    self.summary_period = None
+    self.sess = None
+
     if isinstance(self.policy, rl.policies.CNNPolicy):
       self.summaries = tf.summary.image("Trajectory/observation",
                                         self.policy.inputs)
     else:
       self.summaries = None
-    self._init_stats()
 
-  def _init_stats(self):
-    pass
+  def start(self, summary_writer, summary_period=500, sess=None):
+    self.summary_writer = summary_writer
+    self.summary_period = summary_period
+    self.sess = sess or tf.get_default_session()
+    if self.queue is not None:
+      thread = threading.Thread(target=self._feed_queue, daemon=True)
+      logging.info("Launching daemon agent")
+      thread.start()
 
-  def _update_policy_stats(self, index, observation, sess=None):
-    self.actions[index] = self.policy.act(observation, sess=sess)
+  def rollout(self):
+    traj = self.trajectory
+    for i in range(traj.num_timesteps):
+      traj.observations[i] = traj.latest_observation
+      if traj.policy_states is not None:
+        traj.policy_states[i] = self.policy.get_state()
+      traj.actions[i], traj.value_preds[i] =\
+          self.policy.act(traj.latest_observation, sess=self.sess)
+      traj.latest_observation, traj.rewards[i], traj.resets[i], info =\
+          self.env.step(traj.actions[i])
+      if traj.resets[i]:
+        traj.latest_observation = self.env.reset()
+        self.policy.reset()
+        step = self.sess.run(tf.train.get_global_step())
+        if (step - self.last_summary_step) > self.summary_period:
+          self._add_summary(info, self.summary_writer, step, sess=self.sess)
+          self.last_summary_step = step
+        self.episode_count += 1
 
-  def _add_summary(self, info, summary_writer, sess=None):
-    if sess is None:
-      sess = tf.get_default_session()
+  def next(self):
+    if self.queue is not None:
+      traj = self.queue.get()
+      return traj
+    self.rollout()
+    return self.trajectory
+
+  def _add_summary(self, info, summary_writer, step, sess):
     summary = tf.Summary()
     with tf.variable_scope(None, self.__class__.__name__):
       logkeys = filter(lambda k: k.startswith("logging"), info.keys())
@@ -50,37 +94,26 @@ class Trajectory(object):
         val = float(info[key])
         tag = "Trajectory/" + key.split(".", 1)[1]
         summary.value.add(tag=tag, simple_value=val)
+      if self.queue is not None:
+        tag = "Trajectory/queue_fraction_of_{}_full".format(self.queue.maxsize)
+        summary.value.add(
+            tag=tag, simple_value=self.queue.qsize() / self.queue.maxsize)
     logging.info("Episode #{} finished, reward: {}"\
         .format(self.episode_count, info["logging.total_reward"]))
-    step = sess.run(tf.train.get_global_step())
     summary_writer.add_summary(summary, step)
     if self.summaries is not None:
-      fetched_summary = sess.run(self.summaries,
-                                 {self.policy.inputs: self.observations})
+      fetched_summary = sess.run(
+          self.summaries, {self.policy.inputs: self.trajectory.observations})
       summary_writer.add_summary(fetched_summary, step)
 
-  def update(self, summary_writer, sess=None):
-    num_timesteps = self.num_timesteps
-    for i in range(num_timesteps):
-      self.observations[i] = self.latest_observation
-      if self.policy_states is not None:
-        self.policy_states[i] = self.policy.get_state()
-      self._update_stats(i, self.latest_observation, sess)
-      self.latest_observation, self.rewards[i], self.resets[i], info =\
-          self.env.step(self.actions[i])
-      if self.resets[i]:
-        self.latest_observation = self.env.reset()
-        self.policy.reset()
-        self._add_summary(info, summary_writer, sess)
-        self.episode_count += 1
+  def _feed_queue(self):
+    assert self.queue is not None
+    with self.sess.as_default(), self.sess.graph.as_default():
+      while True:
+        self.trajectory = copy.deepcopy(self.trajectory)
+        self.rollout()
+        self.queue.put(self.trajectory)
 
-
-class ValueFunctionTrajectory(Trajectory):
-  def __init__(self, env, policy, num_timesteps):
-    if not isinstance(policy, rl.policies.ValueFunctionPolicy):
-      raise ValueError("policy must iherit from ValueFunctionPolicy")
-    super(ValueFunctionTrajectory, self)\
-        .__init__(env, policy, num_timesteps)
 
   def _init_stats(self):
     self.value_preds = np.zeros([self.num_timesteps], dtype=np.float32)
@@ -132,11 +165,13 @@ class A2CTrainer(object):
                env,
                policy, *,
                trajectory_length,
+               queue=queue.Queue(maxsize=5),
                entropy_coef=0.01,
                value_loss_coef=0.25,
                name=None):
     self.policy = policy
-    self.trajectory = ValueFunctionTrajectory(env, policy, trajectory_length)
+    self.trajectory_producer = TrajectoryProducer(
+        env, policy, trajectory_length, queue)
     if name is None:
       name = self.__class__.__name__
     with tf.variable_scope(None, name) as scope:
@@ -206,23 +241,24 @@ class A2CTrainer(object):
         saver.restore(sess, checkpoint)
       else:
         tf.global_variables_initializer().run()
+      self.trajectory_producer.start(summary_writer, summary_period, sess=sess)
 
       last_summary_step = -summary_period # always add summary on first step.
       try:
         while self.global_step.eval() < num_steps:
           i = self.global_step.eval()
-          self.trajectory.update(summary_writer, sess=sess)
+          trajectory = self.trajectory_producer.next()
           advantages, value_targets = gae(
-              self.policy, self.trajectory,
+              self.policy, trajectory,
               gamma=gamma, lambda_=lambda_, sess=sess)
           feed_dict = {
-              self.policy.inputs: self.trajectory.observations,
-              self.actions: self.trajectory.actions,
+              self.policy.inputs: trajectory.observations,
+              self.actions: trajectory.actions,
               self.advantages: advantages,
               self.value_targets: value_targets
           }
           if self.policy.get_state() is not None:
-            feed_dict[self.policy.state_in] = self.trajectory.policy_states[0]
+            feed_dict[self.policy.state_in] = trajectory.policy_states[0]
           if (i - last_summary_step) > summary_period:
             fetches = [self.loss,
                        self.policy_loss,
@@ -235,8 +271,8 @@ class A2CTrainer(object):
             info = "Training step #{}:  "\
                   "Loss: {:.4}, Policy loss: {:.4}, Value loss: {:.4f}"\
                   .format(i, loss,
-                      policy_loss / len(self.trajectory.observations),
-                      v_loss / len(self.trajectory.observations))
+                          policy_loss / len(trajectory.observations),
+                          v_loss / len(trajectory.observations))
             logging.info(info)
             last_summary_step = i
           else:
