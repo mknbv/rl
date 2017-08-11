@@ -104,6 +104,7 @@ class UniverseStarterPolicy(CNNPolicy):
                            filters=32,
                            kernel_size=3,
                            strides=2,
+                           padding="same",
                            activation=tf.nn.elu,
                            name="conv2d_{}".format(i + 1))
     x = tf.expand_dims(U.flatten(x), [0])
