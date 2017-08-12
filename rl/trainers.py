@@ -184,11 +184,13 @@ class A2CTrainer(object):
                                           name="value_targets")
       with tf.name_scope("loss"):
         pd = self.policy.distribution
-        self.policy_loss = tf.reduce_sum(
-            pd.neglogp(self.actions) * self.advantages\
-              - entropy_coef * tf.reduce_mean(pd.entropy()))
-        self.v_loss = tf.reduce_sum(tf.square(
-            tf.squeeze(self.policy.value_preds) - self.value_targets))
+        with tf.name_scope("policy_loss"):
+          self.policy_loss = tf.reduce_sum(
+              pd.neglogp(self.actions) * self.advantages)
+          self.policy_loss -= entropy_coef * tf.reduce_sum(pd.entropy())
+        with tf.name_scope("value_loss"):
+          self.v_loss = tf.reduce_sum(tf.square(
+              tf.squeeze(self.policy.value_preds) - self.value_targets))
         self.loss = self.policy_loss + value_loss_coef * self.v_loss
         self.gradients = tf.gradients(self.loss, self.policy.var_list())
         self.grads_and_vars = zip(
@@ -199,9 +201,6 @@ class A2CTrainer(object):
 
   def _init_summaries(self):
     with tf.variable_scope("summaries") as scope:
-      self.episode_length = tf.placeholder(tf.int64, name="episode_length_ph")
-      self.episode_reward = tf.placeholder(tf.float32,
-                                           name="episode_reward_ph")
       tf.summary.scalar("value_preds",
                         tf.reduce_mean(self.policy.value_preds))
       tf.summary.scalar("value_targets",

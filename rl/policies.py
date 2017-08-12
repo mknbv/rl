@@ -108,7 +108,7 @@ class UniverseStarterPolicy(CNNPolicy):
                            activation=tf.nn.elu,
                            name="conv2d_{}".format(i + 1))
     x = tf.expand_dims(U.flatten(x), [0])
-    step_size = tf.shape(self.inputs)[:1]
+    step_size = tf.shape(inputs)[:1]
     lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
     self.state_in = rnn.LSTMStateTuple(
         c=tf.placeholder(tf.float32, [1, lstm.state_size.c]),
