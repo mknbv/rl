@@ -35,12 +35,15 @@ class TrajectoryProducer(object):
     self.policy = policy
     self.act_shape = list(self.policy.distribution.shape[1:])
     self.act_type = self.policy.distribution.dtype.as_numpy_dtype
+    self.num_timesteps = num_timesteps
+    policy_is_recurrent = self.policy.get_state() is not None
     self.trajectory = Trajectory(
-        env.reset(), self.act_shape, self.act_type, num_timesteps,
-        record_policy_states=self.policy.get_state() is not None)
+        env.reset(), self.act_shape, self.act_type, self.num_timesteps,
+        record_policy_states=policy_is_recurrent)
     self.episode_count = 1
     self.last_summary_step = 1
     self.queue = queue
+    self.hard_cutoff = policy_is_recurrent
     self.summary_writer = None
     self.summary_period = None
     self.sess = None
@@ -62,7 +65,8 @@ class TrajectoryProducer(object):
 
   def rollout(self):
     traj = self.trajectory
-    for i in range(traj.num_timesteps):
+    traj.num_timesteps = self.num_timesteps
+    for i in range(self.num_timesteps):
       traj.observations[i] = traj.latest_observation
       if traj.policy_states is not None:
         traj.policy_states[i] = self.policy.get_state()
@@ -78,6 +82,9 @@ class TrajectoryProducer(object):
           self._add_summary(info, self.summary_writer, step, sess=self.sess)
           self.last_summary_step = step
         self.episode_count += 1
+        if self.hard_cutoff:
+          traj.num_timesteps = i + 1
+          break
 
   def next(self):
     if self.queue is not None:
@@ -145,8 +152,9 @@ class TrajectoryProducer(object):
 def gae(policy, trajectory, gamma=0.99, lambda_=0.95, sess=None):
   num_timesteps = trajectory.num_timesteps
   gae = np.zeros([num_timesteps])
-  gae[-1] = trajectory.rewards[-1] - trajectory.value_preds[-1]
-  if not trajectory.resets[-1]:
+  gae[-1] = trajectory.rewards[num_timesteps-1]\
+      - trajectory.value_preds[num_timesteps-1]
+  if not trajectory.resets[num_timesteps-1]:
     obs = trajectory.latest_observation
     gae[-1] += gamma * policy.act(obs, sess)[1]
   for i in reversed(range(num_timesteps-1)):
@@ -155,7 +163,7 @@ def gae(policy, trajectory, gamma=0.99, lambda_=0.95, sess=None):
         + not_reset * gamma * trajectory.value_preds[i+1]\
         - trajectory.value_preds[i]
     gae[i] = delta + not_reset * gamma * lambda_ * gae[i+1]
-  value_targets = gae + trajectory.value_preds
+  value_targets = gae + trajectory.value_preds[:num_timesteps]
   return gae, value_targets
 
 
@@ -251,8 +259,9 @@ class A2CTrainer(object):
               self.policy, trajectory,
               gamma=gamma, lambda_=lambda_, sess=sess)
           feed_dict = {
-              self.policy.inputs: trajectory.observations,
-              self.actions: trajectory.actions,
+              self.policy.inputs:
+                  trajectory.observations[:trajectory.num_timesteps],
+              self.actions: trajectory.actions[:trajectory.num_timesteps],
               self.advantages: advantages,
               self.value_targets: value_targets
           }
