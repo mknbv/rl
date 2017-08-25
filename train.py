@@ -4,9 +4,8 @@ from gym.envs.atari import AtariEnv
 import logging
 import tensorflow as tf
 
+import rl.algorithms
 import rl.policies as policies
-import rl.trainers
-from rl.trainers import BaseA3CTrainer
 import rl.wrappers
 
 OPTIMIZER = tf.train.AdamOptimizer(1e-4)
@@ -96,20 +95,23 @@ def main():
   policy_class = getattr(rl.policies, args.policy + "Policy")
   policy = policy_class(env.observation_space, env.action_space)
   logging.info("Using {} policy".format(policy_class))
-  algo = rl.trainers.BaseA3CTrainer(
+  training_manager = SingularTrainingManager(
+      logdir=args.logdir,
+      summary_period=args.summary_period,
+      checkpoint_period=args.checkpoint_period,
+      checkpoint=args.checkpoint)
+  algorithm = rl.algorithms.BaseA3CAlgorithm(
       env,
       trajectory_length=args.trajectory_length,
       global_policy=policy,
       entropy_coef=args.entropy_coef,
       value_loss_coef=args.value_loss_coef)
-  algo.train(optimizer=OPTIMIZER,
-             num_steps=args.num_train_steps,
-             logdir=args.logdir,
-             summary_period=args.summary_period,
-             checkpoint_period=args.checkpoint_period,
-             gamma=args.gamma,
-             lambda_=args.lambda_,
-             checkpoint=args.checkpoint)
+  algorithm.train(
+      optimizer=OPTIMIZER,
+      num_steps=args.num_train_steps,
+      training_manager=training_manager,
+      gamma=args.gamma,
+      lambda_=args.lambda_)
 
 
 if __name__ == "__main__":
