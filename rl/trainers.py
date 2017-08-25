@@ -78,7 +78,7 @@ class TrajectoryProducer(object):
         traj.latest_observation = self.env.reset()
         self.policy.reset()
         step = self.sess.run(tf.train.get_global_step())
-        if (step - self.last_summary_step) > self.summary_period:
+        if (step - self.last_summary_step) >= self.summary_period:
           self._add_summary(info, self.summary_writer, step, sess=self.sess)
           self.last_summary_step = step
         self.episode_count += 1
@@ -120,33 +120,6 @@ class TrajectoryProducer(object):
         self.trajectory = copy.deepcopy(self.trajectory)
         self.rollout()
         self.queue.put(self.trajectory)
-
-
-  def _init_stats(self):
-    self.value_preds = np.zeros([self.num_timesteps], dtype=np.float32)
-
-  def _update_stats(self, index, observation, sess=None):
-    self.actions[index], self.value_preds[index] =\
-        self.policy.act(observation, sess=sess)
-
-
-# def value_function_critic(policy, trajectory, gamma=0.99, sess=None):
-#   if not isinstance(policy, rl.policies.ValueFunctionPolicy):
-#     raise TypeError("policy must be an instance of ValueFunctionPolicy")
-#   if not isinstance(trajectory, ValueFunctionTrajectory):
-#     raise TypeError("trajectory must be an instance of ValueFunctionTrajectory")
-#   num_timesteps = trajectory.num_timesteps
-#   value_targets = np.zeros([num_timesteps])
-#   value_targets[-1] = trajectory.rewards[-1]
-#   if not trajectory.resets[-1]:
-#     obs = trajectory.latest_observation
-#     value_targets[-1] += gamma * policy.act(obs, sess)[1]
-#   for i in reversed(range(num_timesteps-1)):
-#     not_reset = 1 - trajectory.resets[i]
-#     value_targets[i] = trajectory.rewards[i]\
-#         + not_reset * gamma * value_targets[i+1]
-#   advantages = value_targets - trajectory.value_preds
-#   return advantages, value_targets
 
 
 def gae(policy, trajectory, gamma=0.99, lambda_=0.95, sess=None):
@@ -202,7 +175,7 @@ class A2CTrainer(object):
         self.loss = self.policy_loss + value_loss_coef * self.v_loss
         self.gradients = tf.gradients(self.loss, self.policy.var_list())
         self.grads_and_vars = zip(
-            self.policy.gradient_preprocessing(self.gradients),
+            self.policy.preprocess_gradients(self.gradients),
             self.policy.var_list()
           )
       self._init_summaries()

@@ -14,15 +14,6 @@ OPTIMIZER = tf.train.AdamOptimizer(1e-4)
 gym.undo_logger_setup()
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
-def preprocess_wrap(env):
-  if isinstance(env.unwrapped, AtariEnv):
-    env = rl.wrappers.wrap(env, [
-        rl.wrappers.UniverseStarterImageWrapper(),
-        rl.wrappers.ClipRewardWrapper()
-      ])
-  env = rl.wrappers.LoggingWrapper()(env)
-  return env
-
 
 def get_args():
   parser = argparse.ArgumentParser(
@@ -86,6 +77,17 @@ def get_args():
   )
   args = parser.parse_args()
   return args
+
+
+def preprocess_wrap(env):
+  if isinstance(env.unwrapped, AtariEnv):
+    env = rl.wrappers.wrap(env, [
+        rl.wrappers.UniverseStarterImageWrapper(),
+        rl.wrappers.ClipRewardWrapper()
+      ])
+  env = rl.wrappers.LoggingWrapper()(env)
+  return env
+
 
 def main():
   args = get_args()

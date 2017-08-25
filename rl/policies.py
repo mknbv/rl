@@ -15,7 +15,7 @@ def check_space_type(space_name, space, expected_type):
 
 
 class ValueFunctionPolicy(object):
-  def __init__(self):
+  def __init__(self, observation_space, action_space, name):
     self.scope = None
     self.inputs = None
     self.distribution = None
@@ -38,7 +38,7 @@ class ValueFunctionPolicy(object):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                              scope=self.scope.name)
 
-  def gradient_preprocessing(self, grad_list):
+  def preprocess_gradients(self, grad_list):
     return grad_list
 
 
@@ -147,5 +147,5 @@ class UniverseStarterPolicy(CNNPolicy):
   def reset(self):
     self.state = self.initial_state
 
-  def gradient_preprocessing(self, grad_list):
+  def preprocess_gradients(self, grad_list):
     return tf.clip_by_global_norm(grad_list, 40.0)[0]
