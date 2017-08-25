@@ -7,7 +7,7 @@ import tensorflow as tf
 
 import rl.policies
 from rl.tf_utils import partial_restore
-from rl.trainers import A2CTrainer
+from rl.trainers import BaseA3CTrainer
 
 from train import preprocess_wrap
 

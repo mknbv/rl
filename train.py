@@ -6,7 +6,7 @@ import tensorflow as tf
 
 import rl.policies as policies
 import rl.trainers
-from rl.trainers import A2CTrainer
+from rl.trainers import BaseA3CTrainer
 import rl.wrappers
 
 OPTIMIZER = tf.train.AdamOptimizer(1e-4)
@@ -96,19 +96,20 @@ def main():
   policy_class = getattr(rl.policies, args.policy + "Policy")
   policy = policy_class(env.observation_space, env.action_space)
   logging.info("Using {} policy".format(policy_class))
-  trainer = rl.trainers.A2CTrainer(env,
-                       policy,
-                       trajectory_length=args.trajectory_length,
-                       entropy_coef=args.entropy_coef,
-                       value_loss_coef=args.value_loss_coef)
-  trainer.train(args.num_train_steps,
-                OPTIMIZER,
-                args.logdir,
-                gamma=args.gamma,
-                lambda_=args.lambda_,
-                summary_period=args.summary_period,
-                checkpoint_period=args.checkpoint_period,
-                checkpoint=args.checkpoint)
+  algo = rl.trainers.BaseA3CTrainer(
+      env,
+      trajectory_length=args.trajectory_length,
+      global_policy=policy,
+      entropy_coef=args.entropy_coef,
+      value_loss_coef=args.value_loss_coef)
+  algo.train(optimizer=OPTIMIZER,
+             num_steps=args.num_train_steps,
+             logdir=args.logdir,
+             summary_period=args.summary_period,
+             checkpoint_period=args.checkpoint_period,
+             gamma=args.gamma,
+             lambda_=args.lambda_,
+             checkpoint=args.checkpoint)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,19 @@ class ValueFunctionPolicy(object):
     self.distribution = None
     self.value_preds = None
 
+  @classmethod
+  def global_and_local_instances(cls, worker_id, ps_tasks,
+                                 observation_space, action_space):
+    worker_device = "/job:worker/task:{}/cpu:0".format(worker_id)
+    with tf.device(
+        tf.train.replica_device_setter(ps_tasks, worker_device=worker_device)):
+      name = cls.__name__ + "_" + str(worker_id) + "_global"
+      global_policy = cls(observation_space, action_space, name=name)
+    with tf.device(worker_device):
+      name = name.replace("global", "local")
+      local_policy = cls(observation_space, action_space, name=name)
+    return global_policy, local_policy
+
   def act(self, observation, sess=None):
     sess = sess or tf.get_default_session()
     actions, value_preds = sess.run(
