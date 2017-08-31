@@ -87,11 +87,9 @@ class BaseA3CAlgorithm(object):
           self.global_step.assign_add(batch_size)
         )
 
-  def _get_default_config(self):
-    return tf.ConfigProto(intra_op_parallelism_threads=1,
-                          inter_op_parallelism_threads=2)
-
   def _get_feed_dict(self, sess, gamma, lambda_):
+    if self.sync_ops is not None:
+      sess.run(self.sync_ops)
     trajectory = self.trajectory_producer.next()
     advantages, value_targets = gae(
         self.local_policy, trajectory, gamma=gamma, lambda_=lambda_, sess=sess)
@@ -106,61 +104,34 @@ class BaseA3CAlgorithm(object):
       feed_dict[self.local_policy.state_in] = trajectory.policy_states[0]
     return feed_dict
 
-  @contextmanager
-  def _managed_session(self, checkpoint_dir, checkpoint=None,
-                       checkpoint_period=None, hooks=None, config=USE_DEFAULT):
-    if config == USE_DEFAULT:
-      config = self._get_default_config()
-    hooks = hooks or []
-    saver = tf.train.Saver()
-    if checkpoint_period is not None:
-      hooks += [
-          tf.train.CheckpointSaverHook(
-            checkpoint_dir=checkpoint_dir, saver=saver,
-            save_steps=checkpoint_period)
-        ]
-    elif not any(isinstance(h, tf.train.CheckpointSaverHook) for h in hooks):
-      logging.warning(
-        "Starting training without checkpoint saver hook."\
-        " No checkpoint period provided and no explicit saver hook specified.")
-    with tf.train.SingularMonitoredSession(hooks, config=config) as sess:
-      if checkpoint is not None:
-        saver.restore(sess, checkpoint)
-      yield sess
-
   def train(self,
             optimizer,
             num_steps,
-            logdir,
-            summary_period,
-            checkpoint_period=None,
-            hooks=None,
+            training_manager,
             gamma=0.99,
-            lambda_=0.95,
-            checkpoint=None,
-            config=USE_DEFAULT):
+            lambda_=0.95):
     train_op = self._get_train_op(optimizer)
-    summary_writer = tf.summary.FileWriterCache.get(logdir)
-    with self._managed_session(logdir, checkpoint, checkpoint_period,
-                               hooks, config=config) as sess:
-      summary_writer.add_graph(sess.graph)
+    summary_writer = tf.summary.FileWriterCache.get(training_manager.logdir)
+    with training_manager.session() as sess:
       step = sess.run(self.global_step)
-      # Always add summary on first step.
-      last_summary_step = step - summary_period
+      last_summary_step = step - training_manager.summary_period
       logging.info("Beginning training from step {}".format(step))
-      self.trajectory_producer.start(summary_writer, summary_period, sess=sess)
+      self.trajectory_producer.start(
+          summary_writer, training_manager.summary_period, sess=sess)
       while not sess.should_stop() and step < num_steps:
-        if self.sync_ops is not None:
-          sess.run(self.sync_ops)
         feed_dict = self._get_feed_dict(sess, gamma, lambda_)
-        if step - last_summary_step >= summary_period:
-          policy_loss, v_loss, summary = sess.run(
-            [self.policy_loss, self.v_loss, self.summaries, train_op],
-            feed_dict)[:-1]
-          logging.info("Step #{} Policy loss: {:.4f}, Value Loss: {:.4f}"\
-                       .format(step, policy_loss, v_loss))
-          summary_writer.add_summary(summary, step)
-          last_summary_step = step
-        else:
+        if step - last_summary_step < training_manager.summary_period:
           sess.run(train_op, feed_dict)
+        else:
+          fetches = [
+              self.policy_loss,
+              self.v_loss,
+              self.summaries,
+              train_op
+            ]
+          policy_loss, v_loss, summaries = sess.run(fetches, feed_dict)[:-1]
+          logging.info("Step #{} Policy loss: {:.4f}, Value Loss: {:.4f}"\
+                        .format(step, policy_loss, v_loss))
+          summary_writer.add_summary(summaries, step)
+          last_summary_step = step
         step = sess.run(self.global_step)

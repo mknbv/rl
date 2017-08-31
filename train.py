@@ -6,6 +6,7 @@ import tensorflow as tf
 
 import rl.algorithms
 import rl.policies as policies
+from rl.training_managers import SingularTrainingManager
 import rl.wrappers
 
 OPTIMIZER = tf.train.AdamOptimizer(1e-4)
