@@ -1,3 +1,4 @@
+import cv2
 from datetime import datetime
 import gym
 from gym.envs.atari import AtariEnv
@@ -52,6 +53,7 @@ def ImagePreprocessingWrapper(shape, grayscale):
         self.observation_space = spaces.Box(low=0, high=255, shape=obs_shape)
 
     def _preprocess(self, frame):
+      raise NotImplementedError() # might have errors with image range.
       preprocessed = resize(frame, self._shape, mode="constant")
       if self._grayscale:
         preprocessed = rgb2gray(preprocessed)
@@ -83,8 +85,8 @@ def UniverseStarterImageWrapper():
       self.observation_space = spaces.Box(low=0, high=1, shape=(42, 42, 1))
 
     def _preprocess_observation(self, obs):
-      obs = resize(obs, (80, 80), mode="constant")
-      obs = resize(obs, (42, 42), mode="constant")
+      obs = cv2.resize(obs, (80, 80))
+      obs = cv2.resize(obs, (42, 42))
       obs = np.mean(obs, axis=-1, keepdims=True) / 255.0
       return obs
 
