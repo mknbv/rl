@@ -6,7 +6,7 @@ import queue
 import tensorflow as tf
 
 import rl.policies
-from rl.trajectory import gae, TrajectoryProducer
+from rl.trajectory import GAE, TrajectoryProducer
 
 USE_DEFAULT = object()
 
@@ -18,6 +18,7 @@ class BaseA3CAlgorithm(object):
                trajectory_length,
                global_policy,
                local_policy=None,
+               advantage_estimator=USE_DEFAULT,
                queue=queue.Queue(maxsize=5),
                entropy_coef=0.01,
                value_loss_coef=0.25,
@@ -33,6 +34,9 @@ class BaseA3CAlgorithm(object):
     self.local_policy = local_policy or global_policy
     self.trajectory_producer = TrajectoryProducer(
         env, self.local_policy, trajectory_length, queue)
+    if advantage_estimator == USE_DEFAULT:
+      advantage_estimator = GAE(policy=self.local_policy)
+    self.advantage_estimator = advantage_estimator
     if name is None:
       name = self.__class__.__name__
     with tf.variable_scope(None, name) as scope:
@@ -87,12 +91,11 @@ class BaseA3CAlgorithm(object):
           self.global_step.assign_add(batch_size)
         )
 
-  def _get_feed_dict(self, sess, gamma, lambda_):
+  def _get_feed_dict(self, sess):
     if self.sync_ops is not None:
       sess.run(self.sync_ops)
     trajectory = self.trajectory_producer.next()
-    advantages, value_targets = gae(
-        self.local_policy, trajectory, gamma=gamma, lambda_=lambda_, sess=sess)
+    advantages, value_targets = self.advantage_estimator(trajectory, sess=sess)
     feed_dict = {
         self.local_policy.inputs:
             trajectory.observations[:trajectory.num_timesteps],
@@ -107,9 +110,7 @@ class BaseA3CAlgorithm(object):
   def train(self,
             optimizer,
             num_steps,
-            training_manager,
-            gamma=0.99,
-            lambda_=0.95):
+            training_manager):
     train_op = self._get_train_op(optimizer)
     summary_writer = tf.summary.FileWriterCache.get(training_manager.logdir)
     with training_manager.session() as sess:
@@ -119,7 +120,7 @@ class BaseA3CAlgorithm(object):
       self.trajectory_producer.start(
           summary_writer, training_manager.summary_period, sess=sess)
       while not sess.should_stop() and step < num_steps:
-        feed_dict = self._get_feed_dict(sess, gamma, lambda_)
+        feed_dict = self._get_feed_dict(sess)
         if step - last_summary_step < training_manager.summary_period:
           sess.run(train_op, feed_dict)
         else:

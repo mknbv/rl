@@ -119,19 +119,25 @@ class TrajectoryProducer(object):
         self.queue.put(self.trajectory)
 
 
-def gae(policy, trajectory, gamma=0.99, lambda_=0.95, sess=None):
-  num_timesteps = trajectory.num_timesteps
-  gae = np.zeros([num_timesteps])
-  gae[-1] = trajectory.rewards[num_timesteps-1]\
-      - trajectory.value_preds[num_timesteps-1]
-  if not trajectory.resets[num_timesteps-1]:
-    obs = trajectory.latest_observation
-    gae[-1] += gamma * policy.act(obs, sess)[1]
-  for i in reversed(range(num_timesteps-1)):
-    not_reset = 1 - trajectory.resets[i] # i is for next state
-    delta = trajectory.rewards[i]\
-        + not_reset * gamma * trajectory.value_preds[i+1]\
-        - trajectory.value_preds[i]
-    gae[i] = delta + not_reset * gamma * lambda_ * gae[i+1]
-  value_targets = gae + trajectory.value_preds[:num_timesteps]
-  return gae, value_targets
+class GAE(object):
+  def __init__(self, policy, gamma=0.99, lambda_=0.95):
+    self._policy = policy
+    self._gamma = gamma
+    self._lambda_ = lambda_
+
+  def __call__(self, trajectory, sess=None):
+    num_timesteps = trajectory.num_timesteps
+    gae = np.zeros([num_timesteps])
+    gae[-1] = trajectory.rewards[num_timesteps-1]\
+        - trajectory.value_preds[num_timesteps-1]
+    if not trajectory.resets[num_timesteps-1]:
+      obs = trajectory.latest_observation
+      gae[-1] += self._gamma * self._policy.act(obs, sess)[1]
+    for i in reversed(range(num_timesteps-1)):
+      not_reset = 1 - trajectory.resets[i] # i is for next state
+      delta = trajectory.rewards[i]\
+          + not_reset * self._gamma * trajectory.value_preds[i+1]\
+          - trajectory.value_preds[i]
+      gae[i] = delta + not_reset * self._gamma * self._lambda_ * gae[i+1]
+    value_targets = gae + trajectory.value_preds[:num_timesteps]
+    return gae, value_targets

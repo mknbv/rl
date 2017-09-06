@@ -7,6 +7,7 @@ import tensorflow as tf
 import rl.algorithms
 import rl.policies as policies
 from rl.training_managers import SingularTrainingManager
+from rl.trajectory import GAE
 import rl.wrappers
 
 OPTIMIZER = tf.train.AdamOptimizer(1e-4)
@@ -101,18 +102,18 @@ def main():
       summary_period=args.summary_period,
       checkpoint_period=args.checkpoint_period,
       checkpoint=args.checkpoint)
+  advantage_estimator = GAE(policy, gamma=args.gamma, lambda_=args.lambda_)
   algorithm = rl.algorithms.BaseA3CAlgorithm(
       env,
       trajectory_length=args.trajectory_length,
       global_policy=policy,
+      advantage_estimator=advantage_estimator,
       entropy_coef=args.entropy_coef,
       value_loss_coef=args.value_loss_coef)
   algorithm.train(
       optimizer=OPTIMIZER,
       num_steps=args.num_train_steps,
-      training_manager=training_manager,
-      gamma=args.gamma,
-      lambda_=args.lambda_)
+      training_manager=training_manager)
 
 
 if __name__ == "__main__":
