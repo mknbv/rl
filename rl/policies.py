@@ -48,7 +48,7 @@ class SimplePolicy(ValueFunctionPolicy):
     check_space_type("action_space", action_space, spaces.Discrete)
     if name is None:
       name = self.__class__.__name__
-    with tf.variable_scope(None, name) as scope:
+    with tf.variable_scope(name) as scope:
       self.scope = scope
       obs_shape = list(observation_space.shape)
       self.inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
@@ -69,7 +69,7 @@ class CNNPolicy(ValueFunctionPolicy):
     check_space_type("action_space", action_space, spaces.Discrete)
     if name is None:
       name = self.__class__.__name__
-    with tf.variable_scope(None, name) as scope:
+    with tf.variable_scope(name) as scope:
       self.scope = scope
       obs_shape = list(observation_space.shape)
       self.inputs = tf.placeholder(tf.float32, [None] + obs_shape,
