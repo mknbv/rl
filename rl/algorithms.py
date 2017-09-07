@@ -58,7 +58,7 @@ class BaseA3CAlgorithm(object):
               tf.squeeze(self.local_policy.value_preds) - self.value_targets))
         self.loss = self.policy_loss + value_loss_coef * self.v_loss
         self.gradients = tf.gradients(self.loss, self.local_policy.var_list())
-        self.grads_and_vars = zip(
+        self._grads_and_vars = zip(
             self.global_policy.preprocess_gradients(self.gradients),
             self.global_policy.var_list()
           )
@@ -83,15 +83,27 @@ class BaseA3CAlgorithm(object):
       summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope=scope.name)
       self.summaries = tf.summary.merge(summaries)
 
-  def _get_train_op(self, optimizer):
-    with tf.name_scope("train_op"):
-      batch_size = tf.to_int64(tf.shape(self.local_policy.inputs)[0])
-      return tf.group(
-          optimizer.apply_gradients(self.grads_and_vars),
-          self.global_step.assign_add(batch_size)
-        )
+  @property
+  def batch_size(self):
+    return tf.shape(self.local_policy.inputs)[0]
 
-  def _get_feed_dict(self, sess):
+  @property
+  def logging_fetches(self):
+    return {
+        "Policy loss": self.policy_loss,
+        "Value loss": self.v_loss
+      }
+
+  @property
+  def grads_and_vars(self):
+    return self._grads_and_vars
+
+  def start_training(self, sess, summary_writer, summary_period):
+    if self.sync_ops is not None:
+      sess.run(self.sync_ops)
+    self.trajectory_producer.start(summary_writer, summary_period, sess=sess)
+
+  def get_feed_dict(self, sess):
     if self.sync_ops is not None:
       sess.run(self.sync_ops)
     trajectory = self.trajectory_producer.next()
@@ -106,33 +118,3 @@ class BaseA3CAlgorithm(object):
     if self.local_policy.get_state() is not None:
       feed_dict[self.local_policy.state_in] = trajectory.policy_states[0]
     return feed_dict
-
-  def train(self,
-            optimizer,
-            num_steps,
-            training_manager):
-    train_op = self._get_train_op(optimizer)
-    summary_writer = tf.summary.FileWriterCache.get(training_manager.logdir)
-    with training_manager.session() as sess:
-      step = sess.run(self.global_step)
-      last_summary_step = step - training_manager.summary_period
-      logging.info("Beginning training from step {}".format(step))
-      self.trajectory_producer.start(
-          summary_writer, training_manager.summary_period, sess=sess)
-      while not sess.should_stop() and step < num_steps:
-        feed_dict = self._get_feed_dict(sess)
-        if step - last_summary_step < training_manager.summary_period:
-          sess.run(train_op, feed_dict)
-        else:
-          fetches = [
-              self.policy_loss,
-              self.v_loss,
-              self.summaries,
-              train_op
-            ]
-          policy_loss, v_loss, summaries = sess.run(fetches, feed_dict)[:-1]
-          logging.info("Step #{} Policy loss: {:.4f}, Value Loss: {:.4f}"\
-                        .format(step, policy_loss, v_loss))
-          summary_writer.add_summary(summaries, step)
-          last_summary_step = step
-        step = sess.run(self.global_step)

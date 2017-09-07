@@ -225,10 +225,7 @@ def main():
       advantage_estimator=advantage_estimator,
       entropy_coef=args.entropy_coef,
       value_loss_coef=args.value_loss_coef)
-  algorithm.train(
-      optimizer=optimizer,
-      num_steps=args.num_train_steps,
-      training_manager=training_manager)
+  training_manager.train(algorithm, optimizer, args.num_train_steps)
 
 
 if __name__ == "__main__":
