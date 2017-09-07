@@ -41,7 +41,7 @@ class BaseA3CAlgorithm(object):
       name = self.__class__.__name__
     with tf.variable_scope(None, name) as scope:
       self.scope = scope
-      self.global_step = tf.train.create_global_step()
+      self.global_step = tf.train.get_global_step()
       self.actions = tf.placeholder(self.global_policy.distribution.dtype,
                                     [None], name="actions")
       self.advantages = tf.placeholder(tf.float32, [None], name="advantages")
