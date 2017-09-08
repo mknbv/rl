@@ -6,8 +6,6 @@ import numpy as np
 import tensorflow as tf
 
 import rl.policies
-from rl.tf_utils import partial_restore
-from rl.trainers import A2CTrainer
 
 from train import preprocess_wrap
 
@@ -52,7 +50,8 @@ def main():
     env = wrappers.Monitor(env, args.record,
                            video_callable=lambda episode_id: True)
   policy_class = getattr(rl.policies, args.policy + "Policy")
-  policy = policy_class(env.observation_space, env.action_space)
+  policy = policy_class(env.observation_space, env.action_space,
+                        name=args.policy + "Policy_global")
   logging.info("Using {} policy".format(policy_class))
   with tf.Session() as sess:
     saver = tf.train.Saver().restore(sess, args.checkpoint)
