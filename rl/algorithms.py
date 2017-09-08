@@ -19,7 +19,7 @@ class BaseA3CAlgorithm(object):
                global_policy,
                local_policy=None,
                advantage_estimator=USE_DEFAULT,
-               queue=queue.Queue(maxsize=5),
+               queue=None,
                entropy_coef=0.01,
                value_loss_coef=0.25,
                name=None):
