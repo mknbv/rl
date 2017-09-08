@@ -10,8 +10,7 @@ import time
 import rl.algorithms
 import rl.policies as policies
 from rl.trajectory import GAE
-from rl.training_managers import (SingularTrainingManager,
-                                  DistributedTrainingManager)
+from rl.trainers import SingularTrainer, DistributedTrainer
 import rl.wrappers
 from train_spec import create_optimizer
 
@@ -198,7 +197,7 @@ def main():
   with tf.device(worker_device):
     if args.worker_id is None:
       local_policy = None
-      training_manager = SingularTrainingManager(
+      trainer = SingularTrainer(
           logdir=args.logdir,
           summary_period=args.summary_period,
           checkpoint_period=args.checkpoint_period,
@@ -207,7 +206,7 @@ def main():
       local_policy = policy_class(env.observation_space, env.action_space,
                                   name=policy_class.__name__ + "_local")
       server = get_server(args.num_workers, args.worker_id)
-      training_manager = DistributedTrainingManager(
+      trainer = DistributedTrainer(
           target=server.target,
           is_chief=(args.worker_id == 0),
           logdir=os.path.join(args.logdir, "worker-{}".format(args.worker_id)),
@@ -225,7 +224,7 @@ def main():
       advantage_estimator=advantage_estimator,
       entropy_coef=args.entropy_coef,
       value_loss_coef=args.value_loss_coef)
-  training_manager.train(algorithm, optimizer, args.num_train_steps)
+  trainer.train(algorithm, optimizer, args.num_train_steps)
 
 
 if __name__ == "__main__":

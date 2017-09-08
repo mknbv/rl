@@ -4,7 +4,7 @@ import tensorflow as tf
 
 USE_DEFAULT = object()
 
-class DistributedTrainingManager(object):
+class DistributedTrainer(object):
   def __init__(self,
                target,
                is_chief,
@@ -87,14 +87,14 @@ class DistributedTrainingManager(object):
         step = sess.run(global_step)
 
 
-class SingularTrainingManager(DistributedTrainingManager):
+class SingularTrainer(DistributedTrainer):
   def __init__(self,
                logdir,
                summary_period,
                checkpoint_period,
                checkpoint=None,
                config=USE_DEFAULT):
-    super(SingularTrainingManager, self).__init__(
+    super(SingularTrainer, self).__init__(
         target='',
         is_chief=True,
         logdir=logdir,
