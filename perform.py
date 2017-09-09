@@ -56,6 +56,7 @@ def main():
   with tf.Session() as sess:
     saver = tf.train.Saver().restore(sess, args.checkpoint)
     rewards = np.zeros([args.num_episodes])
+    mean_reward = 0
     for i in range(args.num_episodes):
       obs = env.reset()
       done = False
@@ -65,7 +66,10 @@ def main():
         action = policy.act(obs, sess=sess)[0]
         obs, rew, done, _ = env.step(action)
         rewards[i] += rew
-      logging.info("Episode {} is over, reward: {}".format(i + 1, rewards[i]))
+      mean_reward += 1 / (i + 1) * (rewards[i] - mean_reward)
+      logging.info(
+          "Episode #{} reward: {}; mean reward {}"\
+            .format(i + 1, rewards[i], mean_reward))
     if args.num_episodes > 5:
       print("--\nMean reward: {}, std: {}"\
           .format(np.mean(rewards), np.std(rewards)))
