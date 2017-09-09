@@ -1,3 +1,4 @@
+import abc
 import gym.spaces as spaces
 import numpy as np
 import tensorflow as tf
@@ -14,7 +15,8 @@ def check_space_type(space_name, space, expected_type):
             .format(space_name, expected_type.__name__))
 
 
-class ValueFunctionPolicy(object):
+class ValueFunctionPolicy(abc.ABC):
+  @abc.abstractmethod
   def __init__(self, observation_space, action_space, name):
     self.scope = None
     self.inputs = None

@@ -216,7 +216,7 @@ def main():
     advantage_estimator = rl.trajectory.GAE(
         policy=local_policy or global_policy,
         gamma=args.gamma, lambda_=args.lambda_)
-    algorithm = rl.algorithms.BaseA3CAlgorithm(
+    algorithm = rl.algorithms.A3CAlgorithm(
       env,
       trajectory_length=args.trajectory_length,
       global_policy=global_policy,

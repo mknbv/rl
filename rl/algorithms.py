@@ -1,3 +1,4 @@
+import abc
 from contextlib import contextmanager
 import logging
 import numpy as np
@@ -11,7 +12,32 @@ from rl.trajectory import GAE, TrajectoryProducer
 USE_DEFAULT = object()
 
 
-class BaseA3CAlgorithm(object):
+class BaseAlgorithm(abc.ABC):
+  @property
+  @abc.abstractmethod
+  def batch_size(self):
+    ...
+
+  @property
+  @abc.abstractmethod
+  def logging_fetches(self):
+    ...
+
+  @property
+  @abc.abstractmethod
+  def grads_and_vars(self):
+    ...
+
+  @abc.abstractmethod
+  def start_training(self, sess, summary_writer, summary_period):
+    ...
+
+  @abc.abstractmethod
+  def get_feed_dict(self, sess):
+    ...
+
+
+class A3CAlgorithm(BaseAlgorithm):
 
   def __init__(self,
                env, *,
