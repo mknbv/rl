@@ -8,7 +8,7 @@ from rl.distributions import Categorical
 import rl.tf_utils as U
 
 
-def check_space_type(space_name, space, expected_type):
+def _check_space_type(space_name, space, expected_type):
   if not isinstance(space, expected_type):
     raise ValueError(
         "{} must be an instance of gym.spaces.{}"\
@@ -18,10 +18,10 @@ def check_space_type(space_name, space, expected_type):
 class ValueFunctionPolicy(abc.ABC):
   @abc.abstractmethod
   def __init__(self, observation_space, action_space, name):
-    self.scope = None
-    self.inputs = None
-    self.distribution = None
-    self.value_preds = None
+    self._scope = None
+    self._inputs = None
+    self._distribution = None
+    self._value_preds = None
 
   def act(self, observation, sess=None):
     sess = sess or tf.get_default_session()
@@ -33,50 +33,68 @@ class ValueFunctionPolicy(abc.ABC):
   def reset(self):
     pass
 
-  def get_state(self):
-    return None
-
   def var_list(self):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                             scope=self.scope.name)
+                             scope=self._scope.name)
 
   def preprocess_gradients(self, grad_list):
     return grad_list
 
+  @property
+  def inputs(self):
+    return self._inputs
+
+  @property
+  def state_in(self):
+    return None
+
+  @property
+  def state(self):
+    return None
+
+  @property
+  def distribution(self):
+    return self._distribution
+
+  @property
+  def value_preds(self):
+    return self._value_preds
+
+
 
 class SimplePolicy(ValueFunctionPolicy):
   def __init__(self, observation_space, action_space, name=None):
-    check_space_type("observation_space", observation_space, spaces.Box)
-    check_space_type("action_space", action_space, spaces.Discrete)
+    _check_space_type("observation_space", observation_space, spaces.Box)
+    _check_space_type("action_space", action_space, spaces.Discrete)
     if name is None:
       name = self.__class__.__name__
     with tf.variable_scope(name) as scope:
-      self.scope = scope
+      self._scope = scope
       obs_shape = list(observation_space.shape)
-      self.inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
+      self._inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
                                        name="observations")
-      self._init_network(self.inputs, action_space.n)
+      self._init_network(self._inputs, action_space.n)
 
   def _init_network(self, inputs, num_actions):
     x = tf.layers.dense(inputs, units=16, activation=tf.nn.tanh)
-    self.logits = tf.layers.dense(x, units=num_actions)
-    self.distribution = Categorical.from_logits(self.logits)
-    self.value_preds = tf.layers.dense(x, units=1)
+    self._logits = tf.layers.dense(x, units=num_actions)
+    self._distribution = Categorical.from_logits(self._logits)
+    self._value_preds = tf.layers.dense(x, units=1)
 
 
 class CNNPolicy(ValueFunctionPolicy):
   def __init__(self, observation_space, action_space,
                name=None):
-    check_space_type("observation_space", observation_space, spaces.Box)
-    check_space_type("action_space", action_space, spaces.Discrete)
+    _check_space_type("observation_space", observation_space, spaces.Box)
+    _check_space_type("action_space", action_space, spaces.Discrete)
     if name is None:
       name = self.__class__.__name__
     with tf.variable_scope(name) as scope:
-      self.scope = scope
+      self._scope = scope
       obs_shape = list(observation_space.shape)
-      self.inputs = tf.placeholder(tf.float32, [None] + obs_shape,
+      self._inputs = tf.placeholder(tf.float32, [None] + obs_shape,
                                    name="observations")
-      self._init_network(self.inputs, action_space.n)
+      self._init_network(self._inputs, action_space.n)
 
   def _init_network(self, inputs, num_actions):
     x = tf.layers.conv2d(inputs,
@@ -93,9 +111,9 @@ class CNNPolicy(ValueFunctionPolicy):
                         units=256,
                         activation=tf.nn.relu)
     x = U.flatten(x)
-    self.logits = tf.layers.dense(x, units=num_actions, name="logits")
-    self.distribution = Categorical.from_logits(self.logits)
-    self.value_preds = tf.layers.dense(x, units=1, name="value_preds")
+    self._logits = tf.layers.dense(x, units=num_actions, name="logits")
+    self._distribution = Categorical.from_logits(self._logits)
+    self._value_preds = tf.layers.dense(x, units=1, name="value_preds")
 
 
 class UniverseStarterPolicy(CNNPolicy):
@@ -112,42 +130,48 @@ class UniverseStarterPolicy(CNNPolicy):
     x = tf.expand_dims(U.flatten(x), [0])
     step_size = tf.shape(inputs)[:1]
     lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
-    self.state_in = rnn.LSTMStateTuple(
+    self._state_in = rnn.LSTMStateTuple(
         c=tf.placeholder(tf.float32, [1, lstm.state_size.c]),
         h=tf.placeholder(tf.float32, [1, lstm.state_size.h]))
-    self.initial_state = rnn.LSTMStateTuple(
-        c=np.zeros(self.state_in.c.shape.as_list()),
-        h=np.zeros(self.state_in.c.shape.as_list())
+    self._initial_state = rnn.LSTMStateTuple(
+        c=np.zeros(self._state_in.c.shape.as_list()),
+        h=np.zeros(self._state_in.c.shape.as_list())
       )
-    self.state = self.initial_state
-    lstm_outputs, self.state_out = tf.nn.dynamic_rnn(
-        lstm, x, initial_state=self.state_in, sequence_length=step_size,
+    self._state = self._initial_state
+    lstm_outputs, self._state_out = tf.nn.dynamic_rnn(
+        lstm, x, initial_state=self._state_in, sequence_length=step_size,
         time_major=False)
     x = tf.reshape(lstm_outputs, [-1, lstm.output_size])
-    self.logits = tf.layers.dense(
+    self._logits = tf.layers.dense(
         x,
         units=num_actions,
         kernel_initializer=U.normalized_columns_initializer(0.01),
         name="logits")
-    self.distribution = Categorical.from_logits(self.logits)
-    self.value_preds = tf.layers.dense(
+    self._distribution = Categorical.from_logits(self._logits)
+    self._value_preds = tf.layers.dense(
         x,
         units=1,
         kernel_initializer=U.normalized_columns_initializer(1.0),
         name="value_preds")
 
-  def get_state(self):
-    return self.state
+  @property
+  def state_in(self):
+    """ Tensorflow placeholder for state `LSTMStateCell` input. """
+    return self._state_in
+
+  @property
+  def state(self):
+    return self._state
 
   def act(self, observation, sess=None):
     sess = sess or tf.get_default_session()
-    actions, value_preds, self.state = sess.run(
-        [self.distribution.sample(), self.value_preds, self.state_out],
-        {self.inputs: observation[None, :], self.state_in: self.state})
+    actions, value_preds, self._state = sess.run(
+        [self.distribution.sample(), self.value_preds, self._state_out],
+        {self.inputs: observation[None, :], self._state_in: self._state})
     return actions[0], value_preds[0, 0]
 
   def reset(self):
-    self.state = self.initial_state
+    self._state = self._initial_state
 
   def preprocess_gradients(self, grad_list):
     return tf.clip_by_global_norm(grad_list, 40.0)[0]

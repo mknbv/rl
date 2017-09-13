@@ -28,67 +28,67 @@ class Trajectory(object):
 
 class TrajectoryProducer(object):
   def __init__(self, env, policy, num_timesteps, queue=None):
-    self.env = env
-    self.policy = policy
-    self.act_shape = list(self.policy.distribution.shape[1:])
-    self.act_type = self.policy.distribution.dtype.as_numpy_dtype
-    self.num_timesteps = num_timesteps
-    policy_is_recurrent = self.policy.get_state() is not None
-    self.trajectory = Trajectory(
-        env.reset(), self.act_shape, self.act_type, self.num_timesteps,
+    self._env = env
+    self._policy = policy
+    self._act_shape = list(self._policy.distribution.shape[1:])
+    self._act_type = self._policy.distribution.dtype.as_numpy_dtype
+    self._num_timesteps = num_timesteps
+    policy_is_recurrent = self._policy.state is not None
+    self._trajectory = Trajectory(
+        env.reset(), self._act_shape, self._act_type, self._num_timesteps,
         record_policy_states=policy_is_recurrent)
-    self.episode_count = 1
-    self.last_summary_step = 1
-    self.queue = queue
-    self.hard_cutoff = policy_is_recurrent
-    self.summary_writer = None
-    self.summary_period = None
-    self.sess = None
+    self._episode_count = 1
+    self._last_summary_step = 1
+    self._queue = queue
+    self._hard_cutoff = policy_is_recurrent
+    self._summary_writer = None
+    self._summary_period = None
+    self._sess = None
 
-    if isinstance(self.policy, rl.policies.CNNPolicy):
-      self.summaries = tf.summary.image("Trajectory/observation",
-                                        self.policy.inputs)
+    if isinstance(self._policy, rl.policies.CNNPolicy):
+      self._summaries = tf.summary.image("Trajectory/observation",
+                                        self._policy.inputs)
     else:
-      self.summaries = None
+      self._summaries = None
 
   def start(self, summary_writer, summary_period=500, sess=None):
-    self.summary_writer = summary_writer
-    self.summary_period = summary_period
-    self.sess = sess or tf.get_default_session()
-    if self.queue is not None:
+    self._summary_writer = summary_writer
+    self._summary_period = summary_period
+    self._sess = sess or tf.get_default_session()
+    if self._queue is not None:
       thread = threading.Thread(target=self._feed_queue, daemon=True)
       logging.info("Launching daemon agent")
       thread.start()
 
   def rollout(self):
-    traj = self.trajectory
-    traj.num_timesteps = self.num_timesteps
-    for i in range(self.num_timesteps):
+    traj = self._trajectory
+    traj.num_timesteps = self._num_timesteps
+    for i in range(self._num_timesteps):
       traj.observations[i] = traj.latest_observation
       if traj.policy_states is not None:
-        traj.policy_states[i] = self.policy.get_state()
+        traj.policy_states[i] = self._policy.state
       traj.actions[i], traj.value_preds[i] =\
-          self.policy.act(traj.latest_observation, sess=self.sess)
+          self._policy.act(traj.latest_observation, sess=self._sess)
       traj.latest_observation, traj.rewards[i], traj.resets[i], info =\
-          self.env.step(traj.actions[i])
+          self._env.step(traj.actions[i])
       if traj.resets[i]:
-        traj.latest_observation = self.env.reset()
-        self.policy.reset()
-        step = self.sess.run(tf.train.get_global_step())
-        if (step - self.last_summary_step) >= self.summary_period:
-          self._add_summary(info, self.summary_writer, step, sess=self.sess)
-          self.last_summary_step = step
-        self.episode_count += 1
-        if self.hard_cutoff:
+        traj.latest_observation = self._env.reset()
+        self._policy.reset()
+        step = self._sess.run(tf.train.get_global_step())
+        if (step - self._last_summary_step) >= self._summary_period:
+          self._add_summary(info, self._summary_writer, step, sess=self._sess)
+          self._last_summary_step = step
+        self._episode_count += 1
+        if self._hard_cutoff:
           traj.num_timesteps = i + 1
           break
 
   def next(self):
-    if self.queue is not None:
-      traj = self.queue.get()
+    if self._queue is not None:
+      traj = self._queue.get()
       return traj
     self.rollout()
-    return self.trajectory
+    return self._trajectory
 
   def _add_summary(self, info, summary_writer, step, sess):
     summary = tf.Summary()
@@ -98,25 +98,25 @@ class TrajectoryProducer(object):
         val = float(info[key])
         tag = "Trajectory/" + key.split(".", 1)[1]
         summary.value.add(tag=tag, simple_value=val)
-      if self.queue is not None:
-        tag = "Trajectory/queue_fraction_of_{}_full".format(self.queue.maxsize)
+      if self._queue is not None:
+        tag = "Trajectory/queue_fraction_of_{}_full".format(self._queue.maxsize)
         summary.value.add(
-            tag=tag, simple_value=self.queue.qsize() / self.queue.maxsize)
+            tag=tag, simple_value=self._queue.qsize() / self._queue.maxsize)
     logging.info("Episode #{} finished, reward: {}"\
-        .format(self.episode_count, info["logging.total_reward"]))
+        .format(self._episode_count, info["logging.total_reward"]))
     summary_writer.add_summary(summary, step)
-    if self.summaries is not None:
+    if self._summaries is not None:
       fetched_summary = sess.run(
-          self.summaries, {self.policy.inputs: self.trajectory.observations})
+          self._summaries, {self._policy.inputs: self._trajectory.observations})
       summary_writer.add_summary(fetched_summary, step)
 
   def _feed_queue(self):
-    assert self.queue is not None
-    with self.sess.graph.as_default():
-      while not self.sess.should_stop():
-        self.trajectory = copy.deepcopy(self.trajectory)
-        self.rollout()
-        self.queue.put(self.trajectory)
+    assert self._queue is not None
+    with self._sess.graph.as_default():
+      while not self._sess.should_stop():
+        self._trajectory = copy.deepcopy(self._trajectory)
+        self._rollout()
+        self._queue.put(self._trajectory)
 
 
 class GAE(object):
