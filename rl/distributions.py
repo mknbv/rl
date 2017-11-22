@@ -39,6 +39,10 @@ class Categorical(BaseDistribution):
   def from_logits(cls, logits):
     return cls(logits)
 
+  @property
+  def event_shape(self):
+    return tf.TensorShape([])
+
   @lazy_function
   def sample(self):
     with tf.variable_scope(self.name, reuse=True):

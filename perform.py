@@ -53,6 +53,7 @@ def main():
   policy = policy_class(env.observation_space, env.action_space,
                         name=args.policy + "Policy_global")
   logging.info("Using {} policy".format(policy_class))
+  policy.build()
   with tf.Session() as sess:
     saver = tf.train.Saver().restore(sess, args.checkpoint)
     rewards = np.zeros([args.num_episodes])

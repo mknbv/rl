@@ -5,7 +5,7 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 from rl.distributions import Categorical
-import rl.tf_utils as U
+import rl.tf_utils as tfu
 
 
 def _check_space_type(space_name, space, expected_type):
@@ -15,30 +15,13 @@ def _check_space_type(space_name, space, expected_type):
             .format(space_name, expected_type.__name__))
 
 
-class ValueFunctionPolicy(abc.ABC):
+class ValueFunctionPolicy(tfu.NetworkStructure):
   @abc.abstractmethod
-  def __init__(self, observation_space, action_space, name):
-    self._scope = None
+  def __init__(self, name=None):
     self._inputs = None
     self._distribution = None
+    self._sample = None
     self._value_preds = None
-
-  def act(self, observation, sess=None):
-    sess = sess or tf.get_default_session()
-    actions, value_preds = sess.run(
-        [self.distribution.sample(), self.value_preds],
-        {self.inputs: observation[None, :]})
-    return actions[0], value_preds[0, 0]
-
-  def reset(self):
-    pass
-
-  def var_list(self):
-    return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                             scope=self._scope.name)
-
-  def preprocess_gradients(self, grad_list):
-    return grad_list
 
   @property
   def inputs(self):
@@ -60,43 +43,64 @@ class ValueFunctionPolicy(abc.ABC):
   def value_preds(self):
     return self._value_preds
 
+  def act(self, observation, sess=None):
+    sess = sess or tf.get_default_session()
+    actions, value_preds = sess.run(
+        [self._sample, self.value_preds],
+        {self.inputs: observation[None, :]})
+    return actions[0], value_preds[0, 0]
+
+  def reset(self):
+    pass
+
+  def var_list(self):
+    return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                             scope=self.scope.name)
+
+  def preprocess_gradients(self, grad_list):
+    return grad_list
 
 
 class SimplePolicy(ValueFunctionPolicy):
   def __init__(self, observation_space, action_space, name=None):
     _check_space_type("observation_space", observation_space, spaces.Box)
     _check_space_type("action_space", action_space, spaces.Discrete)
-    if name is None:
-      name = self.__class__.__name__
-    with tf.variable_scope(None, name) as scope:
-      self._scope = scope
-      obs_shape = list(observation_space.shape)
-      self._inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
-                                       name="observations")
-      self._init_network(self._inputs, action_space.n)
+    super(SimplePolicy, self).__init__(name=name)
+    self._observation_space = observation_space
+    self._action_space = action_space
 
-  def _init_network(self, inputs, num_actions):
+  def _build(self):
+    obs_shape = list(self._observation_space.shape)
+    self._inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
+                                      name="observations")
+    self._build_network(self._inputs, self._action_space.n)
+
+  def _build_network(self, inputs, num_actions):
     x = tf.layers.dense(inputs, units=16, activation=tf.nn.tanh)
     self._logits = tf.layers.dense(x, units=num_actions)
-    self._distribution = Categorical.from_logits(self._logits)
+    self._distribution = Categorical(logits=self._logits)
+    self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(x, units=1)
 
 
+# TODO: CNNPolicy should be an abstract base class. What is
+# actually written here is a A3C (Mnih'16) policy. It should
+# be implemented separately and named accordingly.
 class CNNPolicy(ValueFunctionPolicy):
-  def __init__(self, observation_space, action_space,
-               name=None):
+  def __init__(self, observation_space, action_space, name=None):
     _check_space_type("observation_space", observation_space, spaces.Box)
     _check_space_type("action_space", action_space, spaces.Discrete)
-    if name is None:
-      name = self.__class__.__name__
-    with tf.variable_scope(None, name) as scope:
-      self._scope = scope
-      obs_shape = list(observation_space.shape)
-      self._inputs = tf.placeholder(tf.float32, [None] + obs_shape,
-                                   name="observations")
-      self._init_network(self._inputs, action_space.n)
+    super(CNNPolicy, self).__init__(name=name)
+    self._observation_space = observation_space
+    self._action_space = action_space
 
-  def _init_network(self, inputs, num_actions):
+  def _build(self):
+    obs_shape = list(self._observation_space.shape)
+    self._inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
+                                      name="observations")
+    self._build_network(self._inputs, self._action_space.n)
+
+  def _build_network(self, inputs, num_actions):
     x = tf.layers.conv2d(inputs,
                          filters=16,
                          kernel_size=8,
@@ -110,14 +114,15 @@ class CNNPolicy(ValueFunctionPolicy):
     x = tf.layers.dense(x,
                         units=256,
                         activation=tf.nn.relu)
-    x = U.flatten(x)
+    x = tfu.flatten(x)
     self._logits = tf.layers.dense(x, units=num_actions, name="logits")
-    self._distribution = Categorical.from_logits(self._logits)
+    self._distribution = Categorical(logits=self._logits)
+    self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(x, units=1, name="value_preds")
 
 
 class UniverseStarterPolicy(CNNPolicy):
-  def _init_network(self, inputs, num_actions):
+  def _build_network(self, inputs, num_actions):
     x = inputs
     for i in range(4):
       x = tf.layers.conv2d(x,
@@ -127,7 +132,7 @@ class UniverseStarterPolicy(CNNPolicy):
                            padding="same",
                            activation=tf.nn.elu,
                            name="conv2d_{}".format(i + 1))
-    x = tf.expand_dims(U.flatten(x), [0])
+    x = tf.expand_dims(tfu.flatten(x), [0])
     step_size = tf.shape(inputs)[:1]
     lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
     self._state_in = rnn.LSTMStateTuple(
@@ -145,13 +150,14 @@ class UniverseStarterPolicy(CNNPolicy):
     self._logits = tf.layers.dense(
         x,
         units=num_actions,
-        kernel_initializer=U.normalized_columns_initializer(0.01),
+        kernel_initializer=tfu.normalized_columns_initializer(0.01),
         name="logits")
-    self._distribution = Categorical.from_logits(self._logits)
+    self._distribution = Categorical(logits=self._logits)
+    self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(
         x,
         units=1,
-        kernel_initializer=U.normalized_columns_initializer(1.0),
+        kernel_initializer=tfu.normalized_columns_initializer(1.0),
         name="value_preds")
 
   @property
@@ -166,7 +172,7 @@ class UniverseStarterPolicy(CNNPolicy):
   def act(self, observation, sess=None):
     sess = sess or tf.get_default_session()
     actions, value_preds, self._state = sess.run(
-        [self.distribution.sample(), self.value_preds, self._state_out],
+        [self._sample, self.value_preds, self._state_out],
         {self.inputs: observation[None, :], self._state_in: self._state})
     return actions[0], value_preds[0, 0]
 

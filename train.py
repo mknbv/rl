@@ -193,6 +193,7 @@ def main():
     global_step = tf.train.create_global_step()
     global_policy = policy_class(env.observation_space, env.action_space,
                                  name=policy_class.__name__ + "_global")
+    global_policy.build()
     optimizer = create_optimizer(env, global_policy, global_step)
   with tf.device(worker_device):
     if args.worker_id is None:
@@ -205,6 +206,7 @@ def main():
     else:
       local_policy = policy_class(env.observation_space, env.action_space,
                                   name=policy_class.__name__ + "_local")
+      local_policy.build()
       server = get_server(args.num_workers, args.worker_id)
       trainer = DistributedTrainer(
           target=server.target,

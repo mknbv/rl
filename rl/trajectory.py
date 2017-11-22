@@ -30,31 +30,41 @@ class TrajectoryProducer(object):
   def __init__(self, env, policy, num_timesteps, queue=None):
     self._env = env
     self._policy = policy
-    self._act_shape = list(self._policy.distribution.shape[1:])
-    self._act_type = self._policy.distribution.dtype.as_numpy_dtype
     self._num_timesteps = num_timesteps
-    policy_is_recurrent = self._policy.state is not None
-    self._trajectory = Trajectory(
-        env.reset(), self._act_shape, self._act_type, self._num_timesteps,
-        record_policy_states=policy_is_recurrent)
     self._episode_count = 1
     self._last_summary_step = 1
     self._queue = queue
-    self._hard_cutoff = policy_is_recurrent
+    self._trajectory = None
+    self._hard_cutoff = None
     self._summary_writer = None
     self._summary_period = None
     self._sess = None
 
     if isinstance(self._policy, rl.policies.CNNPolicy):
-      self._summaries = tf.summary.image("Trajectory/observation",
-                                        self._policy.inputs)
+      # We cannot create tensor with this summary inside of `start` call,
+      # since at that that the `tf.Graph` might already be finilized.
+      def _set_summaries(built_policy, *args, **kwargs):
+        self._summaries = tf.summary.image("Trajectory/observation",
+                                           built_policy.inputs)
+      self._policy.add_after_build_hook(_set_summaries)
     else:
       self._summaries = None
 
   def start(self, summary_writer, summary_period=500, sess=None):
+    if not self._policy.is_built:
+      raise ValueError("Policy must be built before calling start")
     self._summary_writer = summary_writer
     self._summary_period = summary_period
     self._sess = sess or tf.get_default_session()
+    policy_is_recurrent = self._policy.state is not None
+    act_shape = self._policy.distribution.event_shape.as_list()
+    act_type = self._policy.distribution.dtype.as_numpy_dtype
+    self._trajectory = Trajectory(
+        self._env.reset(), act_shape, act_type, self._num_timesteps,
+        record_policy_states=policy_is_recurrent)
+    self._hard_cutoff = policy_is_recurrent
+
+    # Launch policy.
     if self._queue is not None:
       thread = threading.Thread(target=self._feed_queue, daemon=True)
       logging.info("Launching daemon agent")
