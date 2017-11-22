@@ -4,6 +4,7 @@ import tensorflow as tf
 
 USE_DEFAULT = object()
 
+
 class DistributedTrainer(object):
   def __init__(self,
                target,

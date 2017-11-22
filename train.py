@@ -7,11 +7,7 @@ import sys
 import tensorflow as tf
 import time
 
-import rl.algorithms
-import rl.policies as policies
-from rl.trajectory import GAE, TrajectoryProducer
-from rl.trainers import SingularTrainer, DistributedTrainer
-import rl.wrappers
+import rl
 from train_spec import create_optimizer
 
 gym.undo_logger_setup()
@@ -109,11 +105,11 @@ def get_args():
 
 def preprocess_wrap(env):
   if isinstance(env.unwrapped, AtariEnv):
-    env = rl.wrappers.wrap(env, [
-        rl.wrappers.UniverseStarterImageWrapper(),
-        rl.wrappers.ClipRewardWrapper()
+    env = rl.env_wrappers.wrap(env, [
+        rl.env_wrappers.UniverseStarterImageWrapper(),
+        rl.env_wrappers.ClipRewardWrapper()
       ])
-  env = rl.wrappers.LoggingWrapper()(env)
+  env = rl.env_wrappers.LoggingWrapper()(env)
   return env
 
 
@@ -186,7 +182,7 @@ def main():
     device_setter = None
     global_policy = policy_class(env.observation_space, env.action_space)
     local_policy = None
-    trainer = SingularTrainer(
+    trainer = rl.trainers.SingularTrainer(
         logdir=args.logdir,
         summary_period=args.summary_period,
         checkpoint_period=args.checkpoint_period,
@@ -200,7 +196,7 @@ def main():
     local_policy = policy_class(env.observation_space, env.action_space,
                                 name=policy_class.__name__ + "_local")
     server = get_server(args.num_workers, args.worker_id)
-    trainer = DistributedTrainer(
+    trainer = rl.trainers.DistributedTrainer(
         target=server.target,
         is_chief=(args.worker_id == 0),
         logdir=os.path.join(args.logdir, "worker-{}".format(args.worker_id)),
@@ -216,7 +212,7 @@ def main():
         policy=local_policy or global_policy,
         gamma=args.gamma, lambda_=args.lambda_)
 
-  trajectory_producer = TrajectoryProducer(
+  trajectory_producer = rl.trajectory.TrajectoryProducer(
       env=env,
       policy=local_policy or global_policy,
       num_timesteps=args.trajectory_length,

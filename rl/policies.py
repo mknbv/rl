@@ -4,8 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
-from rl.distributions import Categorical
-import rl.tf_utils as tfu
+import rl.utils.tf_utils as tfu
 
 
 def _check_space_type(space_name, space, expected_type):
@@ -78,7 +77,7 @@ class SimplePolicy(ValueFunctionPolicy):
   def _build_network(self, inputs, num_actions):
     x = tf.layers.dense(inputs, units=16, activation=tf.nn.tanh)
     self._logits = tf.layers.dense(x, units=num_actions)
-    self._distribution = Categorical(logits=self._logits)
+    self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(x, units=1)
 
@@ -116,7 +115,7 @@ class CNNPolicy(ValueFunctionPolicy):
                         activation=tf.nn.relu)
     x = tfu.flatten(x)
     self._logits = tf.layers.dense(x, units=num_actions, name="logits")
-    self._distribution = Categorical(logits=self._logits)
+    self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(x, units=1, name="value_preds")
 
@@ -152,7 +151,7 @@ class UniverseStarterPolicy(CNNPolicy):
         units=num_actions,
         kernel_initializer=tfu.normalized_columns_initializer(0.01),
         name="logits")
-    self._distribution = Categorical(logits=self._logits)
+    self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
     self._value_preds = tf.layers.dense(
         x,
