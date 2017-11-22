@@ -184,52 +184,51 @@ def main():
   if args.worker_id is None:
     worker_device = None
     device_setter = None
+    global_policy = policy_class(env.observation_space, env.action_space)
+    local_policy = None
+    trainer = SingularTrainer(
+        logdir=args.logdir,
+        summary_period=args.summary_period,
+        checkpoint_period=args.checkpoint_period,
+        checkpoint=args.checkpoint)
   else:
     worker_device = "job:worker/task:{}/cpu:0".format(args.worker_id)
     device_setter = tf.train.replica_device_setter(
         1, worker_device=worker_device)
+    global_policy = policy_class(env.observation_space, env.action_space,
+                                 name=policy_class.__name__ + "_global")
+    local_policy = policy_class(env.observation_space, env.action_space,
+                                name=policy_class.__name__ + "_local")
+    server = get_server(args.num_workers, args.worker_id)
+    trainer = DistributedTrainer(
+        target=server.target,
+        is_chief=(args.worker_id == 0),
+        logdir=os.path.join(args.logdir, "worker-{}".format(args.worker_id)),
+        summary_period=args.summary_period,
+        checkpoint_period=args.checkpoint_period,
+        checkpoint=args.checkpoint)
 
   with tf.device(device_setter):
     global_step = tf.train.create_global_step()
-    global_policy = policy_class(env.observation_space, env.action_space,
-                                 name=policy_class.__name__ + "_global")
-    global_policy.build()
     optimizer = create_optimizer(env, global_policy, global_step)
   with tf.device(worker_device):
-    if args.worker_id is None:
-      local_policy = None
-      trainer = SingularTrainer(
-          logdir=args.logdir,
-          summary_period=args.summary_period,
-          checkpoint_period=args.checkpoint_period,
-          checkpoint=args.checkpoint)
-    else:
-      local_policy = policy_class(env.observation_space, env.action_space,
-                                  name=policy_class.__name__ + "_local")
-      local_policy.build()
-      server = get_server(args.num_workers, args.worker_id)
-      trainer = DistributedTrainer(
-          target=server.target,
-          is_chief=(args.worker_id == 0),
-          logdir=os.path.join(args.logdir, "worker-{}".format(args.worker_id)),
-          summary_period=args.summary_period,
-          checkpoint_period=args.checkpoint_period,
-          checkpoint=args.checkpoint)
     advantage_estimator = rl.trajectory.GAE(
         policy=local_policy or global_policy,
         gamma=args.gamma, lambda_=args.lambda_)
-    trajectory_producer = TrajectoryProducer(
-        env=env,
-        policy=local_policy or global_policy,
-        num_timesteps=args.trajectory_length,
-        queue=None)
-    algorithm = rl.algorithms.A3CAlgorithm(
-        trajectory_producer=trajectory_producer,
-        global_policy=global_policy,
-        local_policy=local_policy,
-        advantage_estimator=advantage_estimator,
-        entropy_coef=args.entropy_coef,
-        value_loss_coef=args.value_loss_coef)
+
+  trajectory_producer = TrajectoryProducer(
+      env=env,
+      policy=local_policy or global_policy,
+      num_timesteps=args.trajectory_length,
+      queue=None)
+  algorithm = rl.algorithms.A3CAlgorithm(
+    trajectory_producer=trajectory_producer,
+    global_policy=global_policy,
+    local_policy=local_policy,
+    advantage_estimator=advantage_estimator,
+    entropy_coef=args.entropy_coef,
+    value_loss_coef=args.value_loss_coef)
+  algorithm.build(worker_device, device_setter)
   trainer.train(algorithm, optimizer, args.num_train_steps)
 
 
