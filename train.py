@@ -9,7 +9,7 @@ import time
 
 import rl.algorithms
 import rl.policies as policies
-from rl.trajectory import GAE
+from rl.trajectory import GAE, TrajectoryProducer
 from rl.trainers import SingularTrainer, DistributedTrainer
 import rl.wrappers
 from train_spec import create_optimizer
@@ -218,14 +218,18 @@ def main():
     advantage_estimator = rl.trajectory.GAE(
         policy=local_policy or global_policy,
         gamma=args.gamma, lambda_=args.lambda_)
+    trajectory_producer = TrajectoryProducer(
+        env=env,
+        policy=local_policy or global_policy,
+        num_timesteps=args.trajectory_length,
+        queue=None)
     algorithm = rl.algorithms.A3CAlgorithm(
-      env,
-      trajectory_length=args.trajectory_length,
-      global_policy=global_policy,
-      local_policy=local_policy,
-      advantage_estimator=advantage_estimator,
-      entropy_coef=args.entropy_coef,
-      value_loss_coef=args.value_loss_coef)
+        trajectory_producer=trajectory_producer,
+        global_policy=global_policy,
+        local_policy=local_policy,
+        advantage_estimator=advantage_estimator,
+        entropy_coef=args.entropy_coef,
+        value_loss_coef=args.value_loss_coef)
   trainer.train(algorithm, optimizer, args.num_train_steps)
 
 

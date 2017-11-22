@@ -3,7 +3,6 @@ from contextlib import contextmanager
 import logging
 import numpy as np
 import os
-import queue
 import tensorflow as tf
 
 import rl.policies
@@ -45,12 +44,10 @@ class BaseAlgorithm(abc.ABC):
 class A3CAlgorithm(BaseAlgorithm):
 
   def __init__(self,
-               env, *,
-               trajectory_length,
+               trajectory_producer,
                global_policy,
                local_policy=None,
                advantage_estimator=USE_DEFAULT,
-               queue=None,
                entropy_coef=0.01,
                value_loss_coef=0.25,
                name=None):
@@ -63,8 +60,7 @@ class A3CAlgorithm(BaseAlgorithm):
       self._sync_ops = None
     self._global_policy = global_policy
     self._local_policy = local_policy or global_policy
-    self._trajectory_producer = TrajectoryProducer(
-        env, self._local_policy, trajectory_length, queue)
+    self._trajectory_producer = trajectory_producer
     if advantage_estimator == USE_DEFAULT:
       advantage_estimator = GAE(policy=self._local_policy)
     self._advantage_estimator = advantage_estimator
