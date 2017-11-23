@@ -12,3 +12,6 @@ def create_optimizer(env, policy, global_step):
   elif isinstance(policy, rl.policies.CNNPolicy):
     raise NotImplementedError()
   return optimizer_class(learning_rate=learning_rate)
+
+def wrap_algorithm(env, algorithm):
+  return algorithm

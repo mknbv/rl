@@ -8,7 +8,7 @@ import tensorflow as tf
 import time
 
 import rl
-from train_spec import create_optimizer
+import train_spec
 
 gym.undo_logger_setup()
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -206,7 +206,7 @@ def main():
 
   with tf.device(device_setter):
     global_step = tf.train.create_global_step()
-    optimizer = create_optimizer(env, global_policy, global_step)
+    optimizer = train_spec.create_optimizer(env, global_policy, global_step)
   with tf.device(worker_device):
     advantage_estimator = rl.trajectory.GAE(
         policy=local_policy or global_policy,
@@ -224,6 +224,7 @@ def main():
     advantage_estimator=advantage_estimator,
     entropy_coef=args.entropy_coef,
     value_loss_coef=args.value_loss_coef)
+  algorithm = train_spec.wrap_algorithm(env, algorithm)
   algorithm.build(worker_device, device_setter)
   trainer.train(algorithm, optimizer, args.num_train_steps)
 
