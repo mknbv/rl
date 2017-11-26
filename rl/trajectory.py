@@ -130,10 +130,11 @@ class TrajectoryProducer(object):
 
 
 class GAE(object):
-  def __init__(self, policy, gamma=0.99, lambda_=0.95):
+  def __init__(self, policy, gamma=0.99, lambda_=0.95, normalize=False):
     self._policy = policy
     self._gamma = gamma
     self._lambda_ = lambda_
+    self._normalize = normalize
 
   def __call__(self, trajectory, sess=None):
     num_timesteps = trajectory.num_timesteps
@@ -150,4 +151,6 @@ class GAE(object):
           - trajectory.value_preds[i]
       gae[i] = delta + not_reset * self._gamma * self._lambda_ * gae[i+1]
     value_targets = gae + trajectory.value_preds[:num_timesteps]
+    if self._normalize:
+      gae = (gae - gae.mean()) / (gae.std() + np.finfo(gae.dtype).eps)
     return gae, value_targets

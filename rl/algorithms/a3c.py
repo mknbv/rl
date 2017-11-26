@@ -73,6 +73,7 @@ class A3CAlgorithm(BaseAlgorithm):
           tf.reduce_mean(self.local_or_global_policy.value_preds))
       tf.summary.scalar("value_targets",
                         tf.reduce_mean(self._value_targets))
+      tf.summary.scalar("advantages", tf.reduce_mean(self._advantages))
       tf.summary.scalar(
           "distribution_entropy",
           tf.reduce_mean(self.local_or_global_policy.distribution.entropy()))
