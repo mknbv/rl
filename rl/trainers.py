@@ -73,7 +73,7 @@ class DistributedTrainer(object):
       # reloading from checkpoint.
       summary_writer.add_session_log(
           tf.SessionLog(status=tf.SessionLog.START), step)
-      last_summary_step = -step
+      last_summary_step = step - self._summary_period
       while not sess.should_stop() and step < num_steps:
         feed_dict = algorithm.get_feed_dict(sess)
         if not self._is_chief or\
