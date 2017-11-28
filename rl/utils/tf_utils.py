@@ -19,6 +19,23 @@ def lazy_function(function):
 def flatten(t):
   return tf.reshape(t, [-1, np.prod(t.shape[1:]).value])
 
+def orthogonal_initializer(scale=1.0):
+  # taken from https://github.com/openai/baselines/tree/master/baselines/ppo2
+  def _initializer(shape, dtype, partition_info=None):
+    shape = tuple(shape)
+    if len(shape) == 2:
+      flat_shape = shape
+    elif len(shape) == 4: # assumes NHWC
+      flat_shape = (np.prod(shape[:-1]), shape[-1])
+    else:
+      raise NotImplementedError()
+    a = np.random.normal(0.0, 1.0, flat_shape)
+    u, _, v = np.linalg.svd(a, full_matrices=False)
+    q = u if u.shape == flat_shape else v
+    q = q.reshape(shape)
+    return (scale * q[:shape[0], :shape[1]]).astype(np.float32)
+  return _initializer
+
 def normalized_columns_initializer(stddev=1.0):
   def _initializer(shape, dtype=None, partition_info=None):
     out = np.random.randn(*shape).astype(np.float32)

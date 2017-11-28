@@ -8,6 +8,7 @@ import tensorflow as tf
 import rl.policies
 
 from train import preprocess_wrap
+import train_spec
 
 def get_args():
   parser = argparse.ArgumentParser()
@@ -53,8 +54,8 @@ def main():
     env = wrappers.Monitor(env, args.record,
                            video_callable=lambda episode_id: True)
   policy_class = getattr(rl.policies, args.policy + "Policy")
-  policy = policy_class(
-      env.observation_space, env.action_space,
+  policy = train_spec.create_policy(
+      env, policy_class,
       name=args.policy_name or (args.policy + "Policy_global"))
   logging.info("Using {} policy".format(policy_class))
   policy.build()

@@ -17,6 +17,7 @@ class A3CAlgorithm(BaseAlgorithm):
                advantage_estimator=USE_DEFAULT,
                entropy_coef=0.01,
                value_loss_coef=0.25,
+               sparse_rewards=True,
                name=None):
     super(A3CAlgorithm, self).__init__(global_policy, local_policy, name=name)
     self._trajectory_producer = trajectory_producer
@@ -25,6 +26,7 @@ class A3CAlgorithm(BaseAlgorithm):
     self._advantage_estimator = advantage_estimator
     self._entropy_coef = entropy_coef
     self._value_loss_coef = value_loss_coef
+    self._sparse_rewards = sparse_rewards
 
   @property
   def logging_fetches(self):
@@ -34,20 +36,24 @@ class A3CAlgorithm(BaseAlgorithm):
       }
 
   def _build_loss(self, worker_device=None, device_setter=None):
-    self._actions = tf.placeholder(self._global_policy.distribution.dtype,
-                                   [None], name="actions")
+    pd = self.local_or_global_policy.distribution
+    self._actions = tf.placeholder(
+        pd.dtype, pd.batch_shape.concatenate(pd.event_shape), name="actions")
     self._advantages = tf.placeholder(tf.float32, [None], name="advantages")
     self._value_targets = tf.placeholder(tf.float32, [None],
                                          name="value_targets")
     with tf.name_scope("loss"):
-      pd = self.local_or_global_policy.distribution
       with tf.name_scope("policy_loss"):
         self._policy_loss = tf.reduce_sum(
             -pd.log_prob(self._actions) * self._advantages)
         self._policy_loss -= self._entropy_coef\
             * tf.reduce_sum(pd.entropy())
       with tf.name_scope("value_loss"):
-        self._v_loss = tf.reduce_sum(
+        if self._sparse_rewards:
+          reducer = tf.reduce_sum
+        else:
+          reducer = tf.reduce_mean
+        self._v_loss = reducer(
             tf.square(
               tf.squeeze(self.local_or_global_policy.value_preds)
               - self._value_targets
@@ -77,10 +83,9 @@ class A3CAlgorithm(BaseAlgorithm):
       tf.summary.scalar(
           "distribution_entropy",
           tf.reduce_mean(self.local_or_global_policy.distribution.entropy()))
-      batch_size = tf.to_float(tf.shape(self._actions)[0])
-      tf.summary.scalar("policy_loss", self._policy_loss / batch_size)
-      tf.summary.scalar("value_loss", self._v_loss / batch_size)
-      tf.summary.scalar("loss", self._loss / batch_size)
+      tf.summary.scalar("policy_loss", self._policy_loss)
+      tf.summary.scalar("value_loss", self._v_loss)
+      tf.summary.scalar("loss", self._loss)
       tf.summary.scalar("loss_gradient_norm",
                         tf.global_norm(self._loss_gradients))
       tf.summary.scalar(

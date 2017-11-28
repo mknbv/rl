@@ -1,4 +1,6 @@
 import abc
+import math
+
 import gym.spaces as spaces
 import numpy as np
 import tensorflow as tf
@@ -7,11 +9,45 @@ import tensorflow.contrib.rnn as rnn
 import rl.utils.tf_utils as tfu
 
 
+USE_DEFAULT = object()
+
 def _check_space_type(space_name, space, expected_type):
   if not isinstance(space, expected_type):
     raise ValueError(
         "{} must be an instance of gym.spaces.{}"\
             .format(space_name, expected_type.__name__))
+
+
+class BaseDistributionCreator(abc.ABC):
+  @abc.abstractmethod
+  def create_distribution(self, tensor, action_space):
+    ...
+
+class DefaultDistributionCreator(BaseDistributionCreator):
+  def create_distribution(self, tensor, action_space):
+    if isinstance(action_space, spaces.Discrete):
+      logits = tf.layers.dense(tensor, units=action_space.n)
+      distribution = tf.distributions.Categorical(logits=logits)
+      return distribution
+    if isinstance(action_space, spaces.Box):
+      if len(action_space.shape) > 1:
+        raise TypeError(
+            "action_space of type spaces.Box supported only when it has"
+            " single dimension, action_space: ".format(action_space)
+        )
+      loc = tf.layers.dense(tensor, units=np.prod(action_space.shape))
+      scale_diag = tf.get_variable(
+          name="logstd",
+          shape=[1, np.prod(action_space.shape)],
+          initializer=tf.constant_initializer(math.log(math.e - 1))
+      )
+      distribution = (
+          tf.contrib.distributions.MultivariateNormalDiagWithSoftplusScale(
+              loc=loc, scale_diag=scale_diag)
+      )
+      return distribution
+    raise NotImplementedError(
+        "Unsupported action_space: `{}`".format(action_space))
 
 
 class ValueFunctionPolicy(tfu.NetworkStructure):
@@ -60,26 +96,72 @@ class ValueFunctionPolicy(tfu.NetworkStructure):
     return grad_list
 
 
-class SimplePolicy(ValueFunctionPolicy):
-  def __init__(self, observation_space, action_space, name=None):
+class MLPPolicy(ValueFunctionPolicy):
+  def __init__(self,
+               observation_space,
+               action_space,
+               distribution_creator=USE_DEFAULT,
+               num_layers=3,
+               units=64,
+               clipping_param=10,
+               joint=False,
+               name=None):
     _check_space_type("observation_space", observation_space, spaces.Box)
-    _check_space_type("action_space", action_space, spaces.Discrete)
-    super(SimplePolicy, self).__init__(name=name)
+    super(MLPPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
+    if distribution_creator == USE_DEFAULT:
+      distribution_creator = DefaultDistributionCreator()
+    self._distribution_creator = distribution_creator
+    self._num_layers = num_layers
+    self._units = units
+    self._clipping_param = clipping_param
+    self._joint = joint
 
   def _build(self):
     obs_shape = list(self._observation_space.shape)
-    self._inputs = x = tf.placeholder(tf.float32, [None] + obs_shape,
-                                      name="observations")
-    self._build_network(self._inputs, self._action_space.n)
+    self._inputs = tf.placeholder(tf.float32, [None] + obs_shape,
+                                  name="observations")
+    self._build_network(self._inputs)
 
-  def _build_network(self, inputs, num_actions):
-    x = tf.layers.dense(inputs, units=16, activation=tf.nn.tanh)
-    self._logits = tf.layers.dense(x, units=num_actions)
-    self._distribution = tf.distributions.Categorical(logits=self._logits)
+  def _build_network(self, inputs):
+    pi = vf = inputs
+    kernel_initializer = lambda scale: tfu.orthogonal_initializer(scale)
+    bias_initializer = tf.zeros_initializer()
+    for i in range(self._num_layers - 1):
+      if self._joint:
+        pi = vf = tf.layers.dense(
+            pi,
+            units=self._units,
+            activation=tf.nn.tanh,
+            kernel_initializer=kernel_initializer(np.sqrt(2)),
+            bias_initializer=bias_initializer,
+        )
+      else:
+        pi = tf.layers.dense(
+            pi,
+            units=self._units,
+            activation=tf.nn.tanh,
+            kernel_initializer=kernel_initializer(np.sqrt(2)),
+            bias_initializer=bias_initializer
+        )
+        vf = tf.layers.dense(
+            vf,
+            units=self._units,
+            activation=tf.nn.tanh,
+            kernel_initializer=kernel_initializer(np.sqrt(2)),
+            bias_initializer=bias_initializer
+        )
+    # _create_distribution will add last hidden layer.
+    self._distribution = self._distribution_creator.create_distribution(
+        pi, self._action_space)
     self._sample = self._distribution.sample()
-    self._value_preds = tf.layers.dense(x, units=1)
+    self._value_preds = tf.layers.dense(vf, units=1)
+
+  def preprocess_gradients(self, grad_list):
+    if self._clipping_param is not None:
+      return tf.clip_by_global_norm(grad_list, self._clipping_param)[0]
+    return grad_list
 
 
 # TODO: CNNPolicy should be an abstract base class. What is

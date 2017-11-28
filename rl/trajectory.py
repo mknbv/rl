@@ -2,6 +2,7 @@ import copy
 import logging
 import threading
 
+from gym import spaces
 import numpy as np
 import tensorflow as tf
 
@@ -28,7 +29,22 @@ class Trajectory(object):
 
 class TrajectoryProducer(object):
   def __init__(self, env, policy, num_timesteps, queue=None):
+    if not isinstance(env.action_space, (spaces.Box, spaces.Discrete)):
+      raise TypeError(
+          "Action spaces are supported only of type spaces.Box and "
+          " spaces.Discrete, env.action_space: {}".format(env.action_space)
+      )
+    if isinstance(env.action_space, spaces.Box) and\
+        len(env.action_space.shape) > 1:
+      raise TypeError(
+          "env has action_space of type spaces.Box which supported only when"
+          " it has single dimension. env.action_space: {}"
+          .format(env.action_space)
+      )
     self._env = env
+    self._action_shape = []
+    if not isinstance(env.action_space, spaces.Discrete):
+      self._action_shape = list(env.action_space.shape)
     self._policy = policy
     self._num_timesteps = num_timesteps
     self._episode_count = 1
@@ -42,7 +58,7 @@ class TrajectoryProducer(object):
 
     if isinstance(self._policy, rl.policies.CNNPolicy):
       # We cannot create tensor with this summary inside of `start` call,
-      # since at that that the `tf.Graph` might already be finilized.
+      # since at that time the `tf.Graph` might already be finilized.
       def _set_summaries(built_policy, *args, **kwargs):
         self._summaries = tf.summary.image("Trajectory/observation",
                                            built_policy.inputs)
@@ -57,10 +73,9 @@ class TrajectoryProducer(object):
     self._summary_period = summary_period
     self._sess = sess or tf.get_default_session()
     policy_is_recurrent = self._policy.state is not None
-    act_shape = self._policy.distribution.event_shape.as_list()
     act_type = self._policy.distribution.dtype.as_numpy_dtype
     self._trajectory = Trajectory(
-        self._env.reset(), act_shape, act_type, self._num_timesteps,
+        self._env.reset(), self._action_shape, act_type, self._num_timesteps,
         record_policy_states=policy_is_recurrent)
     self._hard_cutoff = policy_is_recurrent
 

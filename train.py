@@ -180,7 +180,7 @@ def main():
   if args.worker_id is None:
     worker_device = None
     device_setter = None
-    global_policy = policy_class(env.observation_space, env.action_space)
+    global_policy = train_spec.create_policy(env, policy_class)
     local_policy = None
     trainer = rl.trainers.SingularTrainer(
         logdir=args.logdir,
@@ -191,10 +191,10 @@ def main():
     worker_device = "job:worker/task:{}/cpu:0".format(args.worker_id)
     device_setter = tf.train.replica_device_setter(
         1, worker_device=worker_device)
-    global_policy = policy_class(env.observation_space, env.action_space,
-                                 name=policy_class.__name__ + "_global")
-    local_policy = policy_class(env.observation_space, env.action_space,
-                                name=policy_class.__name__ + "_local")
+    global_policy = train_spec.create_policy(
+        env, policy_class, name=policy_class.__name__ + "_global")
+    local_policy = train_spec.create_policy(
+        env, policy_class, name=policy_class.__name__ + "_local")
     server = get_server(args.num_workers, args.worker_id)
     trainer = rl.trainers.DistributedTrainer(
         target=server.target,
@@ -223,7 +223,9 @@ def main():
     local_policy=local_policy,
     advantage_estimator=advantage_estimator,
     entropy_coef=args.entropy_coef,
-    value_loss_coef=args.value_loss_coef)
+    value_loss_coef=args.value_loss_coef,
+    sparse_rewards=train_spec.is_atari_env(env)
+  )
   algorithm = train_spec.wrap_algorithm(env, algorithm)
   algorithm.build(optimizer, worker_device, device_setter)
   trainer.train(algorithm, args.num_train_steps)
