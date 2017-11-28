@@ -24,6 +24,9 @@ def get_args():
       required=True
   )
   parser.add_argument(
+      "--policy-name",
+  )
+  parser.add_argument(
       "--num-episodes",
       type=int,
       default=1
@@ -50,8 +53,9 @@ def main():
     env = wrappers.Monitor(env, args.record,
                            video_callable=lambda episode_id: True)
   policy_class = getattr(rl.policies, args.policy + "Policy")
-  policy = policy_class(env.observation_space, env.action_space,
-                        name=args.policy + "Policy_global")
+  policy = policy_class(
+      env.observation_space, env.action_space,
+      name=args.policy_name or (args.policy + "Policy_global"))
   logging.info("Using {} policy".format(policy_class))
   policy.build()
   with tf.Session() as sess:
