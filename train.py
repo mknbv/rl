@@ -225,8 +225,8 @@ def main():
     entropy_coef=args.entropy_coef,
     value_loss_coef=args.value_loss_coef)
   algorithm = train_spec.wrap_algorithm(env, algorithm)
-  algorithm.build(worker_device, device_setter)
-  trainer.train(algorithm, optimizer, args.num_train_steps)
+  algorithm.build(optimizer, worker_device, device_setter)
+  trainer.train(algorithm, args.num_train_steps)
 
 
 if __name__ == "__main__":

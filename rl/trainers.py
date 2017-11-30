@@ -54,15 +54,7 @@ class DistributedTrainer(object):
     with tf.train.MonitoredSession(session_creator, hooks=hooks) as sess:
       yield sess
 
-  def _get_train_op(self, algorithm, optimizer):
-    batch_size = tf.to_int64(algorithm.batch_size)
-    inc_step = tf.train.get_global_step().assign_add(batch_size)
-    train_op = tf.group(
-        optimizer.apply_gradients(algorithm.grads_and_vars), inc_step)
-    return train_op
-
-  def train(self, algorithm, optimizer, num_steps):
-    train_op = self._get_train_op(algorithm, optimizer)
+  def train(self, algorithm, num_steps):
     summary_writer = tf.summary.FileWriterCache.get(self._logdir)
     global_step = tf.train.get_global_step()
 
@@ -78,9 +70,13 @@ class DistributedTrainer(object):
         feed_dict = algorithm.get_feed_dict(sess)
         if not self._is_chief or\
             step - last_summary_step < self._summary_period:
-          sess.run(train_op, feed_dict)
+          sess.run(algorithm.train_op, feed_dict)
         else:
-          fetches = [algorithm.logging_fetches, algorithm.summaries, train_op]
+          fetches = [
+              algorithm.logging_fetches,
+              algorithm.summaries,
+              algorithm.train_op
+          ]
           values, summaries = sess.run(fetches, feed_dict)[:-1]
           logging.info("Step #{}, {}".format(step, values))
           summary_writer.add_summary(summaries, step)

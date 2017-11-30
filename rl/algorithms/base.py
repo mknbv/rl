@@ -16,7 +16,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
     self._local_policy = local_policy
     self._loss = None
     self._summaries = None
-    self._grads_and_vars = None
+    self._train_op = None
     self._sync_ops = None
 
   @property
@@ -32,10 +32,6 @@ class BaseAlgorithm(tfu.NetworkStructure):
     return self._local_policy or self._global_policy
 
   @property
-  def batch_size(self):
-    return tf.shape(self.local_or_global_policy.inputs)[0]
-
-  @property
   @abc.abstractmethod
   def logging_fetches(self):
     ...
@@ -45,8 +41,8 @@ class BaseAlgorithm(tfu.NetworkStructure):
     return self._loss
 
   @property
-  def grads_and_vars(self):
-    return self._grads_and_vars
+  def train_op(self):
+    return self._train_op
 
   @property
   def summaries(self):
@@ -62,9 +58,15 @@ class BaseAlgorithm(tfu.NetworkStructure):
                                   device_setter=device_setter)
 
   @tfu.scoped
-  def build_grads(self, worker_device=None, device_setter=None):
-    self._grads_and_vars = self._build_grads(worker_device=worker_device,
-                                             device_setter=device_setter)
+  def build_train_op(self, optimizer, worker_device=None, device_setter=None):
+    batch_size = tf.shape(self.local_or_global_policy.inputs)[0]
+    batch_size = tf.to_int64(batch_size)
+    inc_step = tf.train.get_global_step().assign_add(batch_size)
+    grads_and_vars = self._build_grads(worker_device=worker_device,
+                                       device_setter=device_setter)
+    self._train_op = tf.group(optimizer.apply_gradients(grads_and_vars),
+                              inc_step)
+
 
   @tfu.scoped
   def build_summaries(self):
@@ -84,7 +86,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
   def get_feed_dict(self, sess):
     return self._get_feed_dict(sess)
 
-  def _build(self, worker_device=None, device_setter=None):
+  def _build(self, optimizer, worker_device=None, device_setter=None):
     """ Adds all the variables and ops needed by this algorithm.
 
     This currently does not support partially build algorithms, so
@@ -95,6 +97,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
     `local_policy` is not implemented only worker_device is used.
 
     Args:
+      optimizer: optimizer for the algorithm.
       worker_device: device which will be used to build `local_policy` and
         the algorithm itself.
       device_setter: device setter function for `global_policy`.
@@ -113,7 +116,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
       if self.local_policy is not None:
         self._local_policy.build()
       self.build_loss(worker_device, device_setter)
-      self.build_grads(worker_device, device_setter)
+      self.build_train_op(optimizer, worker_device, device_setter)
       self.build_summaries()
       self.build_sync_ops()
 
