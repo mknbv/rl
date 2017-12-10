@@ -4,8 +4,6 @@ import gym
 from gym.envs.atari import AtariEnv
 import gym.spaces as spaces
 import numpy as np
-from skimage.transform import resize
-from skimage.color import rgb2gray
 
 
 def wrap(env, wrappers):
@@ -53,10 +51,10 @@ def ImagePreprocessingWrapper(shape, grayscale):
         self.observation_space = spaces.Box(low=0, high=255, shape=obs_shape)
 
     def _preprocess(self, frame):
-      raise NotImplementedError() # might have errors with image range.
-      preprocessed = resize(frame, self._shape, mode="constant")
+      preprocessed = cv2.resize(frame, self._shape)
       if self._grayscale:
-        preprocessed = rgb2gray(preprocessed)
+        preprocessed = cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
+        preprocessed = preprocessed.astype(np.float32) / 255.0
       return preprocessed
 
     def _step(self, action):
@@ -109,7 +107,7 @@ def MaxBetweenFramesWrapper():
 
     def _step(self, action):
       true_obs, reward, done, info = self.env.step(action)
-      obs = np.max([true_obs, self._last_obs], axis=0)
+      obs = np.maximum(true_obs, self._last_obs)
       self._last_obs = true_obs
       if "max.between.observations" in info:
         raise gym.error.Error(
@@ -205,8 +203,8 @@ def LoggingWrapper():
 
 def NatureDQNWrapper():
   wrappers = [
-      ImagePreprocessingWrapper((84, 84), grayscale=True),
       MaxBetweenFramesWrapper(),
+      ImagePreprocessingWrapper((84, 84), grayscale=True),
       QueueFramesWrapper(4),
       ClipRewardWrapper()
   ]
