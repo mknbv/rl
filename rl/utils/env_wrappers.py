@@ -73,19 +73,21 @@ def ImagePreprocessingWrapper(shape, grayscale):
   return ImagePreprocessingWrapper
 
 
-def UniverseStarterImageWrapper():
+def UniverseStarterImageWrapper(keepdims=True):
   class UniverseStarterImageWrapper(gym.ObservationWrapper):
     def __init__(self, env):
       if not isinstance(env.unwrapped, AtariEnv):
         raise TypeError("env must be an AtariEnv")
       super(UniverseStarterImageWrapper, self).__init__(env)
       self.env = ImageCroppingWrapper(34, 0, 160, 160)(env)
-      self.observation_space = spaces.Box(low=0, high=1, shape=(42, 42, 1))
+      self._keepdims = keepdims
+      obs_shape = (42, 42) + ((1,) if self._keepdims else ())
+      self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape)
 
     def _preprocess_observation(self, obs):
       obs = cv2.resize(obs, (80, 80))
       obs = cv2.resize(obs, (42, 42))
-      obs = np.mean(obs, axis=-1, keepdims=True) / 255.0
+      obs = np.mean(obs, axis=-1, keepdims=self._keepdims) / 255.0
       return obs
 
     def _step(self, action):

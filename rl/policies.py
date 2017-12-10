@@ -203,18 +203,17 @@ class CNNPolicy(ValueFunctionPolicy):
 
 
 class UniverseStarterPolicy(CNNPolicy):
-  def _build_network(self, inputs, num_actions):
-    x = inputs
-    for i in range(4):
-      x = tf.layers.conv2d(x,
-                           filters=32,
-                           kernel_size=3,
-                           strides=2,
-                           padding="same",
-                           activation=tf.nn.elu,
-                           name="conv2d_{}".format(i + 1))
-    x = tf.expand_dims(tfu.flatten(x), [0])
-    step_size = tf.shape(inputs)[:1]
+  def __init__(self, observation_space, action_space,
+               recurrent=True, name=None):
+    super(UniverseStarterPolicy, self).__init__(observation_space,
+                                                action_space, name=name)
+    self._recurrent = recurrent
+    self._state = None
+    self._initial_state = None
+
+  def _recurrent_layer(self, x):
+    x = tf.expand_dims(x, [0])
+    step_size = tf.shape(x)[1:2]
     lstm = rnn.BasicLSTMCell(256, state_is_tuple=True)
     self._state_in = rnn.LSTMStateTuple(
         c=tf.placeholder(tf.float32, [1, lstm.state_size.c]),
@@ -228,6 +227,26 @@ class UniverseStarterPolicy(CNNPolicy):
         lstm, x, initial_state=self._state_in, sequence_length=step_size,
         time_major=False)
     x = tf.reshape(lstm_outputs, [-1, lstm.output_size])
+    return x
+
+  def _dense_layer(self, x):
+    return tf.layers.dense(x, units=256, activation=tf.nn.elu)
+
+  def _build_network(self, inputs, num_actions):
+    x = inputs
+    for i in range(4):
+      x = tf.layers.conv2d(x,
+                           filters=32,
+                           kernel_size=3,
+                           strides=2,
+                           padding="same",
+                           activation=tf.nn.elu,
+                           name="conv2d_{}".format(i + 1))
+    x = tfu.flatten(x)
+    if self._recurrent:
+      x = self._recurrent_layer(x)
+    else:
+      x = self._dense_layer(x)
     self._logits = tf.layers.dense(
         x,
         units=num_actions,
@@ -252,13 +271,21 @@ class UniverseStarterPolicy(CNNPolicy):
 
   def act(self, observation, sess=None):
     sess = sess or tf.get_default_session()
-    actions, value_preds, self._state = sess.run(
-        [self._sample, self.value_preds, self._state_out],
-        {self.inputs: observation[None, :], self._state_in: self._state})
+    fetches = [self._sample, self.value_preds]
+    feed_dict = {self.inputs: observation[None, :]}
+    if self._recurrent:
+      fetches.append(self._state_out)
+      feed_dict[self._state_in] = self._state
+      actions, value_preds, self._state = sess.run(fetches, feed_dict)
+    else:
+      actions, value_preds = sess.run(fetches, feed_dict)
     return actions[0], value_preds[0, 0]
 
   def reset(self):
     self._state = self._initial_state
 
   def preprocess_gradients(self, grad_list):
-    return tf.clip_by_global_norm(grad_list, 40.0)[0]
+    if self._recurrent:
+      return tf.clip_by_global_norm(grad_list, 40.0)[0]
+    else:
+      return grad_list
