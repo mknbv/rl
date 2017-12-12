@@ -7,8 +7,11 @@ import tensorflow as tf
 
 import rl.policies
 
-from train import preprocess_wrap
 import train_spec
+
+gym.undo_logger_setup()
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
+
 
 def get_args():
   parser = argparse.ArgumentParser()
@@ -49,11 +52,11 @@ def get_args():
 def main():
   args = get_args()
 
-  env = preprocess_wrap(gym.make(args.env_id))
+  policy_class = getattr(rl.policies, args.policy + "Policy")
+  env = train_spec.wrap_env(gym.make(args.env_id), policy_class)
   if args.record is not None:
     env = wrappers.Monitor(env, args.record,
                            video_callable=lambda episode_id: True)
-  policy_class = getattr(rl.policies, args.policy + "Policy")
   policy = train_spec.create_policy(
       env, policy_class,
       name=args.policy_name or (args.policy + "Policy_global"))

@@ -103,16 +103,6 @@ def get_args():
   return args
 
 
-def preprocess_wrap(env):
-  if isinstance(env.unwrapped, AtariEnv):
-    env = rl.env_wrappers.wrap(env, [
-        rl.env_wrappers.UniverseStarterImageWrapper(),
-        rl.env_wrappers.ClipRewardWrapper()
-      ])
-  env = rl.env_wrappers.LoggingWrapper()(env)
-  return env
-
-
 def get_server(num_workers, worker_id=None, host="localhost", port=12222):
   spec = {
       "ps": ["{}:{}".format(host, port)],
@@ -173,8 +163,8 @@ def main():
       time.sleep(600)
     return
 
-  env = preprocess_wrap(gym.make(args.env_id))
   policy_class = getattr(rl.policies, args.policy + "Policy")
+  env = train_spec.wrap_env(gym.make(args.env_id), policy_class)
   logging.info("Using {} policy".format(policy_class))
 
   if args.worker_id is None:
