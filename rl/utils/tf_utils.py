@@ -93,8 +93,8 @@ class NetworkStructure(abc.ABC):
     network_structure = super(NetworkStructure, cls).__new__(cls)
     network_structure._is_built = False
     network_structure._name = name or cls.__name__
-    network_structure._scope = next(
-        tf.variable_scope(network_structure._name).gen)
+    with tf.variable_scope(network_structure._name) as captured_scope:
+      network_structure._scope = captured_scope
     network_structure._before_build_hooks = before_build_hooks or []
     network_structure._after_build_hooks = after_build_hooks or []
     return network_structure
