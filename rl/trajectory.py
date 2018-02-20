@@ -140,7 +140,7 @@ class TrajectoryProducer(object):
     with self._sess.graph.as_default():
       while not self._sess.should_stop():
         self._trajectory = copy.deepcopy(self._trajectory)
-        self._rollout()
+        self.rollout()
         self._queue.put(self._trajectory)
 
 
