@@ -5,6 +5,9 @@ import rl.policies
 from rl.trajectory import GAE, TrajectoryProducer
 import rl.utils.tf_utils as tfu
 
+
+__all__ = ["A3CAlgorithm"]
+
 USE_DEFAULT = object()
 
 

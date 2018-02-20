@@ -4,6 +4,9 @@ import tensorflow as tf
 import rl.utils.tf_utils as tfu
 
 
+__all__ = ["BaseAlgorithm", "AlgorithmWrapper"]
+
+
 # TODO: implement some way of keeping track of the build stage and build
 # dependencies.
 class BaseAlgorithm(tfu.NetworkStructure):
