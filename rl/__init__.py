@@ -1,6 +1,6 @@
 import rl.algorithms
 import rl.policies
-import rl.trajectory
+import rl.data
 import rl.trainers
 
 from rl.utils import tf_utils

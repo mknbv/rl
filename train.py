@@ -44,7 +44,7 @@ def get_args():
       choices=["ps", "worker"]
   )
   parser.add_argument(
-      "--trajectory-length",
+      "--batch-size",
       type=int,
       default=20
   )
@@ -198,17 +198,17 @@ def main():
     global_step = tf.train.create_global_step()
     optimizer = train_spec.create_optimizer(env, global_policy, global_step)
   with tf.device(worker_device):
-    advantage_estimator = rl.trajectory.GAE(
+    advantage_estimator = rl.algorithms.GAE(
         policy=local_policy or global_policy,
         gamma=args.gamma, lambda_=args.lambda_)
 
-  trajectory_producer = rl.trajectory.TrajectoryProducer(
+  interactions_producer = rl.data.OnlineInteractionsProducer(
       env=env,
       policy=local_policy or global_policy,
-      num_timesteps=args.trajectory_length,
+      batch_size=args.batch_size,
       queue=None)
   algorithm = rl.algorithms.A3CAlgorithm(
-    trajectory_producer=trajectory_producer,
+    interactions_producer=interactions_producer,
     global_policy=global_policy,
     local_policy=local_policy,
     advantage_estimator=advantage_estimator,

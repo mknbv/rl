@@ -172,6 +172,9 @@ def ClipRewardWrapper():
 
 def LoggingWrapper():
   class LoggingWrapper(gym.Wrapper):
+    def __init__(self, env):
+      super(LoggingWrapper, self).__init__(env)
+      self._episode_counter = 0
 
     def _step(self, action):
       if self.first_step:
@@ -189,6 +192,8 @@ def LoggingWrapper():
       if done:
         delta_seconds = (datetime.now() - self.start_time).total_seconds()
         interactions_per_second = self.episode_length / delta_seconds
+        self._episode_counter += 1
+      info["logging.episode_counter"] = self._episode_counter
       info["logging.interactions_per_second"] = interactions_per_second
       return obs, rew, done, info
 
