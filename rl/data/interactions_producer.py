@@ -9,8 +9,6 @@ from gym import spaces
 import numpy as np
 import tensorflow as tf
 
-import rl.policies
-
 
 __all__ = ["BaseInteractionsProducer", "OnlineInteractionsProducer"]
 
@@ -92,12 +90,12 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size)
     self._queue = queue
 
-    if isinstance(self._policy, rl.policies.CNNPolicy):
+    if self._policy.metadata.get("visualize_observations", False):
       # We cannot create tensor with this summary inside of `start` call,
       # since at that time the `tf.Graph` might already be finilized.
       def _set_summaries(built_policy, *args, **kwargs):
         self._summaries = tf.summary.image("Trajectory/observation",
-                                           built_policy.inputs)
+                                           built_policy.observations)
       self._policy.add_after_build_hook(_set_summaries)
     else:
       self._summaries = None
@@ -124,11 +122,11 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
         "actions": np.empty(act_shape, dtype=act_type),
         "rewards": np.empty(self._batch_size, dtype=np.float32),
         "resets": np.empty(self._batch_size, dtype=np.bool),
-        "value_preds": np.empty(self._batch_size, dtype=np.float32),
+        "critic_values": np.empty(self._batch_size, dtype=np.float32),
         "num_timesteps": self._batch_size,
     }
-    if self._policy.state is not None:
-      self._trajectory["policy_state"] = self._policy.state
+    if self._policy.state_values is not None:
+      self._trajectory["policy_state"] = self._policy.state_values
 
     # Launch policy.
     if self._queue is not None:
@@ -142,13 +140,13 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
     actions = traj["actions"]
     rewards = traj["rewards"]
     resets = traj["resets"]
-    value_preds = traj["value_preds"]
+    critic_values = traj["critic_values"]
     traj["num_timesteps"] = self._batch_size
     if "policy_state" in traj:
-      traj["policy_state"] = self._policy.state
+      traj["policy_state"] = self._policy.state_values
     for i in range(self._batch_size):
       observations[i] = self._trajectory["latest_observation"]
-      actions[i], value_preds[i] =\
+      actions[i], critic_values[i] =\
           self._policy.act(traj["latest_observation"], sess=self._sess)
       traj["latest_observation"], rewards[i], resets[i], info =\
           self._env.step(actions[i])
@@ -159,7 +157,7 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
           self._add_summary(info)
         # Recurrent policies require trajectory to end when episode ends.
         # Otherwise the batch may combine interactions from differen episodes.
-        if self._policy.state is not None:
+        if self._policy.state_inputs is not None:
           traj["num_timesteps"] = i + 1
           break
 
@@ -173,7 +171,7 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
   def _add_summary(self, info):
     feed_dict = None
     if self._summaries is not None:
-      feed_dict = {self._policy.inputs: self._trajectory["observations"]}
+      feed_dict = {self._policy.observations: self._trajectory["observations"]}
     self._summary_manager.add_summary(
         info, summaries=self._summaries, feed_dict=feed_dict)
     if self._queue is not None:

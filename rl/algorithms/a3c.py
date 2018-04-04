@@ -59,7 +59,7 @@ class A3CAlgorithm(BaseAlgorithm):
           reducer = tf.reduce_mean
         self._v_loss = reducer(
             tf.square(
-              tf.squeeze(self.local_or_global_policy.value_preds)
+              tf.squeeze(self.local_or_global_policy.critic_tensor)
               - self._value_targets
             )
         )
@@ -79,8 +79,8 @@ class A3CAlgorithm(BaseAlgorithm):
   def _build_summaries(self):
     with tf.variable_scope("summaries") as scope:
       s = tf.summary.scalar(
-          "value_preds",
-          tf.reduce_mean(self.local_or_global_policy.value_preds))
+          "critic_tensor",
+          tf.reduce_mean(self.local_or_global_policy.critic_tensor))
       tf.summary.scalar("value_targets",
                         tf.reduce_mean(self._value_targets))
       tf.summary.scalar("advantages", tf.reduce_mean(self._advantages))
@@ -107,13 +107,13 @@ class A3CAlgorithm(BaseAlgorithm):
     advantages, value_targets = self._advantage_estimator(trajectory, sess=sess)
     num_timesteps = trajectory["num_timesteps"]
     feed_dict = {
-        self.local_or_global_policy.inputs:
+        self.local_or_global_policy.observations:
             trajectory["observations"][:num_timesteps],
         self._actions: trajectory["actions"][:num_timesteps],
         self._advantages: advantages,
         self._value_targets: value_targets
     }
-    if self.local_or_global_policy.state is not None:
-      feed_dict[self.local_or_global_policy.state_in] =\
+    if self.local_or_global_policy.state_values is not None:
+      feed_dict[self.local_or_global_policy.state_inputs] =\
           trajectory["policy_state"]
     return feed_dict

@@ -62,7 +62,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
 
   @tfu.scoped
   def build_train_op(self, optimizer, worker_device=None, device_setter=None):
-    batch_size = tf.shape(self.local_or_global_policy.inputs)[0]
+    batch_size = tf.shape(self.local_or_global_policy.observations)[0]
     batch_size = tf.to_int64(batch_size)
     inc_step = tf.train.get_global_step().assign_add(batch_size)
     grads_and_vars = self._build_grads(worker_device=worker_device,

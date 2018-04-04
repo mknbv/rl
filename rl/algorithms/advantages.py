@@ -14,7 +14,7 @@ class GAE(object):
     num_timesteps = trajectory["num_timesteps"]
     gae = np.zeros([num_timesteps])
     gae[-1] = trajectory["rewards"][num_timesteps-1]\
-        - trajectory["value_preds"][num_timesteps-1]
+        - trajectory["critic_values"][num_timesteps-1]
     if not trajectory["resets"][num_timesteps-1]:
       obs = trajectory["latest_observation"]
       gae[-1] += self._gamma * self._policy.act(obs, sess)[1]
@@ -22,11 +22,11 @@ class GAE(object):
       not_reset = 1 - trajectory["resets"][i] # i is for next state
       delta = (
           trajectory["rewards"][i]
-          + not_reset * self._gamma * trajectory["value_preds"][i+1]
-          - trajectory["value_preds"][i]
+          + not_reset * self._gamma * trajectory["critic_values"][i+1]
+          - trajectory["critic_values"][i]
       )
       gae[i] = delta + not_reset * self._gamma * self._lambda_ * gae[i+1]
-    value_targets = gae + trajectory["value_preds"][:num_timesteps]
+    value_targets = gae + trajectory["critic_values"][:num_timesteps]
     if self._normalize:
       gae = (gae - gae.mean()) / (gae.std() + np.finfo(gae.dtype).eps)
     return gae, value_targets
