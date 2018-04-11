@@ -30,11 +30,11 @@ class _InteractionSummaryManager(object):
     return self._step
 
   @property
-  def step_val(self):
+  def step_value(self):
     return self._sess.run(self.step)
 
   def summary_time(self):
-    return self._summary_period <= self.step_val - self._last_summary_step
+    return self._summary_period <= self.step_value - self._last_summary_step
 
   def add_summary(self, info, summaries=None, feed_dict=None):
     episode_counter = info.get("logging.episode_counter", None)
@@ -43,7 +43,7 @@ class _InteractionSummaryManager(object):
                    .format(episode_counter, info["logging.total_reward"]))
     if summaries is not None:
       fetched_summaries = self._sess.run(summaries, feed_dict)
-      self.summary_writer.add_summary(fetched_summaries, self.step_val)
+      self.summary_writer.add_summary(fetched_summaries, self.step_value)
     summary = tf.Summary()
     logkeys = filter(
         lambda k: k.startswith("logging") and k != "logging.episode_counter",
@@ -53,7 +53,8 @@ class _InteractionSummaryManager(object):
       val = float(info[key])
       tag = "Trajectory/" + key.split(".", 1)[1]
       summary.value.add(tag=tag, simple_value=val)
-    self._summary_writer.add_summary(summary, self.step_val)
+    self._summary_writer.add_summary(summary, self.step_value)
+    self._last_summary_step = self.step_value
 
 
 class BaseInteractionsProducer(abc.ABC):
@@ -180,7 +181,7 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
       frac = self._queue.qsize() / self._queue.maxsize
       summary.value.add(tag=tag, simple_value=frac)
       self._summary_manager.summary_writer.add_summary(
-          summary, self._summary_manager.step_val)
+          summary, self._summary_manager.step_value)
 
   def _feed_queue(self):
     assert self._queue is not None
