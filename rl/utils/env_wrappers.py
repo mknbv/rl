@@ -113,7 +113,8 @@ class UniverseStarter(gym.ObservationWrapper):
     self.env = ImageCropping(env, 34, 0, 160, 160)
     self._keepdims = keepdims
     obs_shape = (42, 42) + ((1,) if self._keepdims else ())
-    self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape)
+    self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape,
+                                        dtype=np.float)
 
   def _preprocess_observation(self, obs):
     obs = cv2.resize(obs, (80, 80))
