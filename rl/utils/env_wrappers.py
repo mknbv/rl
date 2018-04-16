@@ -77,22 +77,23 @@ class FireReset(gym.Wrapper):
 
 
 class ImagePreprocessing(gym.ObservationWrapper):
-  def __init__(self, env, grayscale):
+  def __init__(self, env, shape, grayscale=True):
     super(ImagePreprocessing, self).__init__(env)
     self._shape = shape
     self._grayscale = grayscale
     if self._grayscale:
-      self.observation_space = spaces.Box(low=0, high=1, shape=shape)
+      self.observation_space = spaces.Box(low=0, high=255,
+                                          shape=shape, dtype=np.uint8)
     else:
-      obs_shape = list(shape) + list(self.observation_space.shape[2:])
-      self.observation_space = spaces.Box(low=0, high=255, shape=obs_shape)
+      obs_shape = shape + self.observation_space.shape[2:]
+      self.observation_space = spaces.Box(low=0, high=255,
+                                          shape=obs_shape, dtype=np.uint8)
 
   def _preprocess(self, frame):
-    preprocessed = cv2.resize(frame, self._shape)
     if self._grayscale:
-      preprocessed = cv2.cvtColor(preprocessed, cv2.COLOR_RGB2GRAY)
-      preprocessed = preprocessed.astype(np.float32) / 255.0
-    return preprocessed
+      frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    frame = cv2.resize(frame, self._shape, cv2.INTER_AREA)
+    return frame
 
   def step(self, action):
     obs, reward, done, info = self.env.step(action)
