@@ -258,22 +258,25 @@ class Logging(gym.Wrapper):
       self.first_step = False
     obs, rew, done, info = self.env.step(action)
     self.total_reward += rew
+    self.episode_reward += rew
     self.episode_length += 1
     info["logging.total_reward"] = self.total_reward
-    info["logging.episode_length"] = self.episode_length
-    interactions_per_second = None
+    info["logging.trajectory_length"] = self.episode_length
     if done:
       delta_seconds = (datetime.now() - self.start_time).total_seconds()
       interactions_per_second = self.episode_length / delta_seconds
       self._episode_counter += 1
-    info["logging.episode_counter"] = self._episode_counter
-    info["logging.interactions_per_second"] = interactions_per_second
+      info["logging.episode_counter"] = self._episode_counter
+      info["logging.interactions_per_second"] = interactions_per_second
+    if "real_done" in info and info["real_done"]:
+      info["logging.episode_reward"] = self.episode_reward
     return obs, rew, done, info
 
   def reset(self):
     self.first_step = True
     self.start_time = None
     self.total_reward = 0
+    self.episode_reward = 0
     self.episode_length = 0
     self.interactions_per_second = 0
     return self.env.reset()
