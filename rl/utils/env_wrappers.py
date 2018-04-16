@@ -1,5 +1,7 @@
-import cv2
 from datetime import datetime
+
+import cv2
+cv2.ocl.setUseOpenCL(False)
 import gym
 from gym.envs.atari import AtariEnv
 import gym.spaces as spaces
