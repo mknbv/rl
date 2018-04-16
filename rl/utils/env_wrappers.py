@@ -6,11 +6,10 @@ import gym.spaces as spaces
 import numpy as np
 
 
-class ImageCroppingWrapper(gym.ObservationWrapper):
-  def __init__(self, env,
-               offset_height, offset_width,
+class ImageCropping(gym.ObservationWrapper):
+  def __init__(self, env, offset_height, offset_width,
                target_height, target_width):
-    super(ImageCroppingWrapper, self).__init__(env)
+    super(ImageCropping, self).__init__(env)
     self.offset_height = offset_height
     self.offset_width = offset_width
     self.target_height = target_height
@@ -32,9 +31,9 @@ class ImageCroppingWrapper(gym.ObservationWrapper):
     return self._crop(self.env.reset())
 
 
-class ImagePreprocessingWrapper(gym.ObservationWrapper):
+class ImagePreprocessing(gym.ObservationWrapper):
   def __init__(self, env, grayscale):
-    super(ImagePreprocessingWrapper, self).__init__(env)
+    super(ImagePreprocessing, self).__init__(env)
     self._shape = shape
     self._grayscale = grayscale
     if self._grayscale:
@@ -64,12 +63,12 @@ class ImagePreprocessingWrapper(gym.ObservationWrapper):
     return self._preprocess(obs)
 
 
-class UniverseStarterImageWrapper(gym.ObservationWrapper):
+class UniverseStarter(gym.ObservationWrapper):
   def __init__(self, env, keepdims=True):
     if not isinstance(env.unwrapped, AtariEnv):
       raise TypeError("env must be an AtariEnv")
-    super(UniverseStarterImageWrapper, self).__init__(env)
-    self.env = ImageCroppingWrapper(env, 34, 0, 160, 160)
+    super(UniverseStarter, self).__init__(env)
+    self.env = ImageCropping(env, 34, 0, 160, 160)
     self._keepdims = keepdims
     obs_shape = (42, 42) + ((1,) if self._keepdims else ())
     self.observation_space = spaces.Box(low=0, high=1, shape=obs_shape)
@@ -89,9 +88,9 @@ class UniverseStarterImageWrapper(gym.ObservationWrapper):
     return self._preprocess_observation(self.env.reset())
 
 
-class MaxBetweenFramesWrapper(gym.ObservationWrapper):
+class MaxBetweenFrames(gym.ObservationWrapper):
   def __init__(self, env):
-    super(MaxBetweenFramesWrapper, self).__init__(env)
+    super(MaxBetweenFrames, self).__init__(env)
     self._last_obs = None
 
   def _step(self, action):
@@ -102,7 +101,7 @@ class MaxBetweenFramesWrapper(gym.ObservationWrapper):
       raise gym.error.Error(
           "Key 'max.between.observations' already in "\
           "info. Make sure you are not stacking the "\
-          "MaxBetweenObservationsWrapper wrappers.")
+          "MaxBetweenObservations wrappers.")
     info["max.between.observations"] = ""
     return obs, reward, done, info
 
@@ -111,9 +110,9 @@ class MaxBetweenFramesWrapper(gym.ObservationWrapper):
     return self._last_obs
 
 
-class QueueFramesWrapper(gym.ObservationWrapper):
+class QueueFrames(gym.ObservationWrapper):
   def __init__(self, env, num_frames):
-    super(QueueFramesWrapper, self).__init__(env)
+    super(QueueFrames, self).__init__(env)
     self._num_frames = num_frames
     self._obs_queue = None
     obs_shape = list(self.observation_space.shape) + [num_frames]
@@ -136,7 +135,7 @@ class QueueFramesWrapper(gym.ObservationWrapper):
                                 np.expand_dims(obs, -1), axis=-1)
     if "queue.num_frames" in info:
       raise gym.error.Error("Key 'queue.num_frames' already in info. Make "\
-            "sure you are not stacking the QueueFramesWrapper wrappers.")
+            "sure you are not stacking the QueueFrames wrappers.")
     info["queue.num_frames"] = self._num_frames
     return self._obs_queue, reward, done, info
 
@@ -145,14 +144,14 @@ class QueueFramesWrapper(gym.ObservationWrapper):
     return self._obs_queue
 
 
-class ClipRewardWrapper(gym.RewardWrapper):
+class ClipReward(gym.RewardWrapper):
   def _reward(self, reward):
     return np.sign(reward)
 
 
-class LoggingWrapper(gym.Wrapper):
+class Logging(gym.Wrapper):
   def __init__(self, env):
-    super(LoggingWrapper, self).__init__(env)
+    super(Logging, self).__init__(env)
     self._episode_counter = 0
 
   def _step(self, action):
@@ -162,7 +161,7 @@ class LoggingWrapper(gym.Wrapper):
     obs, rew, done, info = self.env.step(action)
     if "logging.total_reward" in info:
       raise ValueError("Key 'logging.total_reward' already in info. Make "\
-          "sure you are not stacking the LoggingWrapper wrappers.")
+          "sure you are not stacking the Logging wrappers.")
     self.total_reward += rew
     self.episode_length += 1
     info["logging.total_reward"] = self.total_reward
@@ -186,8 +185,8 @@ class LoggingWrapper(gym.Wrapper):
 
 
 def nature_dqn_wrap(env):
-  env = MaxBetweenFramesWrapper(env)
-  env = ImagePreprocessingWrapper(env, (84, 84), grayscale=True)
-  env = QueueFramesWrapper(env, 4)
-  env = ClipRewardWrapper(env)
+  env = MaxBetweenFrames(env)
+  env = ImagePreprocessing(env, (84, 84), grayscale=True)
+  env = QueueFrames(env, 4)
+  env = ClipReward(env)
   return env
