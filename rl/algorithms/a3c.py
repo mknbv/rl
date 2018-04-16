@@ -66,20 +66,24 @@ class A3CAlgorithm(BaseAlgorithm):
       loss = self._policy_loss + self._value_loss_coef * self._v_loss
       return loss
 
-  def _build_grads(self, worker_device=None, device_setter=None):
-    with tf.device(worker_device):
-      self._loss_gradients =\
-          tf.gradients(self._loss, self.local_or_global_policy.var_list())
-      grads_and_vars = list(zip(
-          self._global_policy.preprocess_gradients(self._loss_gradients),
-          self._global_policy.var_list()
-      ))
-      return grads_and_vars
+  def _build_train_op(self, optimizer):
+    self._loss_gradients =\
+        tf.gradients(self._loss, self.local_or_global_policy.var_list())
+    grads_and_vars = list(zip(
+        self._global_policy.preprocess_gradients(self._loss_gradients),
+        self._global_policy.var_list()
+    ))
+    train_op = optimizer.apply_gradients(grads_and_vars)
+    batch_size = tf.to_int64(
+        tf.shape(self.local_or_global_policy.observations)[0])
+    inc_step = tf.train.get_global_step().assign_add(batch_size)
+    train_op = tf.group(train_op, inc_step)
+    return train_op
 
   def _build_summaries(self):
     with tf.variable_scope("summaries") as scope:
-      s = tf.summary.scalar(
-          "critic_tensor",
+      tf.summary.scalar(
+          "critic_values",
           tf.reduce_mean(self.local_or_global_policy.critic_tensor))
       tf.summary.scalar("value_targets",
                         tf.reduce_mean(self._value_targets))
@@ -100,7 +104,7 @@ class A3CAlgorithm(BaseAlgorithm):
   def _start_training(self, sess, summary_writer, summary_period):
     self._interactions_producer.start(summary_writer, summary_period, sess=sess)
 
-  def _get_feed_dict(self, sess):
+  def _get_feed_dict(self, sess, summary_time=False):
     if self.sync_ops is not None:
       sess.run(self.sync_ops)
     trajectory = self._interactions_producer.next()
@@ -113,7 +117,7 @@ class A3CAlgorithm(BaseAlgorithm):
         self._advantages: advantages,
         self._value_targets: value_targets
     }
-    if self.local_or_global_policy.state_values is not None:
+    if self.local_or_global_policy.state_inputs is not None:
       feed_dict[self.local_or_global_policy.state_inputs] =\
           trajectory["policy_state"]
     return feed_dict

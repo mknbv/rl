@@ -1,4 +1,5 @@
 import abc
+
 import tensorflow as tf
 
 import rl.utils.tf_utils as tfu
@@ -7,8 +8,6 @@ import rl.utils.tf_utils as tfu
 __all__ = ["BaseAlgorithm"]
 
 
-# TODO: implement some way of keeping track of the build stage and build
-# dependencies.
 class BaseAlgorithm(tfu.NetworkStructure):
   def __init__(self, global_policy, local_policy, name=None):
     if local_policy is not None and\
@@ -56,20 +55,12 @@ class BaseAlgorithm(tfu.NetworkStructure):
     return self._sync_ops
 
   @tfu.scoped
-  def build_loss(self, worker_device=None, device_setter=None):
-    self._loss = self._build_loss(worker_device=worker_device,
-                                  device_setter=device_setter)
+  def build_loss(self):
+    self._loss = self._build_loss()
 
   @tfu.scoped
-  def build_train_op(self, optimizer, worker_device=None, device_setter=None):
-    batch_size = tf.shape(self.local_or_global_policy.observations)[0]
-    batch_size = tf.to_int64(batch_size)
-    inc_step = tf.train.get_global_step().assign_add(batch_size)
-    grads_and_vars = self._build_grads(worker_device=worker_device,
-                                       device_setter=device_setter)
-    self._train_op = tf.group(optimizer.apply_gradients(grads_and_vars),
-                              inc_step)
-
+  def build_train_op(self, optimizer):
+    self._train_op = self._build_train_op(optimizer)
 
   @tfu.scoped
   def build_summaries(self):
@@ -86,8 +77,8 @@ class BaseAlgorithm(tfu.NetworkStructure):
       sess.run(self.sync_ops)
     self._start_training(sess, summary_writer, summary_period)
 
-  def get_feed_dict(self, sess):
-    return self._get_feed_dict(sess)
+  def get_feed_dict(self, sess, summary_time=False):
+    return self._get_feed_dict(sess, summary_time=summary_time)
 
   def _build(self, optimizer, worker_device=None, device_setter=None):
     """ Adds all the variables and ops needed by this algorithm.
@@ -118,17 +109,13 @@ class BaseAlgorithm(tfu.NetworkStructure):
     with tf.device(worker_device):
       if self.local_policy is not None:
         self._local_policy.build()
-      self.build_loss(worker_device, device_setter)
-      self.build_train_op(optimizer, worker_device, device_setter)
+      self.build_loss()
+      self.build_train_op(optimizer)
       self.build_summaries()
       self.build_sync_ops()
 
   @abc.abstractmethod
-  def _build_loss(self, worker_device=None, device_setter=None):
-    ...
-
-  @abc.abstractmethod
-  def _build_grads(self, worker_device=None, device_setter=None):
+  def _build_loss(self):
     ...
 
   @abc.abstractmethod
@@ -144,10 +131,13 @@ class BaseAlgorithm(tfu.NetworkStructure):
       ]
     return ops
 
-  @abc.abstractmethod
   def _start_training(self, sess, summary_writer, summary_period):
+    pass
+
+  @abc.abstractmethod
+  def _build_train_op(self):
     ...
 
   @abc.abstractmethod
-  def _get_feed_dict(self, sess):
+  def _get_feed_dict(self, sess, summary_time=False):
     ...
