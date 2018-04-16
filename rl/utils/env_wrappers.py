@@ -131,6 +131,9 @@ class UniverseStarter(gym.ObservationWrapper):
 class MaxBetweenFrames(gym.ObservationWrapper):
   def __init__(self, env):
     super(MaxBetweenFrames, self).__init__(env)
+    if isinstance(env.unwrapped, gym.envs.atari.AtariEnv) and\
+        "NoFrameskip" not in env.spec.id:
+      raise TypeError("MaxBetweenFrames requires NoFrameskip in Atari env id")
     self._last_obs = None
 
   def step(self, action):
@@ -172,6 +175,27 @@ class QueueFrames(gym.ObservationWrapper):
   def reset(self):
     self._obs_queue = self._reset_obs_queue()
     return self._obs_queue
+
+
+class SkipFrames(gym.ObservationWrapper):
+  def __init__(self, env, nskip=4):
+    super(SkipFrames, self).__init__(env)
+    if isinstance(env.unwrapped, gym.envs.atari.AtariEnv) and\
+        "NoFrameskip" not in env.spec.id:
+      raise TypeError("SkipFrames requires NoFrameskip in atari env id")
+    self._nskip = nskip
+
+  def step(self, action):
+    total_reward = 0.0
+    for _ in range(self._nskip):
+      obs, rew, done, info = self.env.step(action)
+      if done:
+        break
+      total_reward += rew
+    return obs, total_reward, done, info
+
+  def reset(self):
+    return self.env.reset()
 
 
 class ClipReward(gym.RewardWrapper):
@@ -244,6 +268,7 @@ def nature_dqn_wrap(env):
     env = FireReset(env)
   env = StartWithRandomActions(env, max_random_actions=30)
   env = MaxBetweenFrames(env)
+  env = SkipFrames(env, 4)
   env = ImagePreprocessing(env, (84, 84), grayscale=True)
   env = QueueFrames(env, 4)
   env = ClipReward(env)
