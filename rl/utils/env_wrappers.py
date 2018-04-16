@@ -1,3 +1,4 @@
+from collections import deque
 from datetime import datetime
 
 import cv2
@@ -148,33 +149,48 @@ class MaxBetweenFrames(gym.ObservationWrapper):
 
 
 class QueueFrames(gym.ObservationWrapper):
-  def __init__(self, env, num_frames):
+  def __init__(self, env, num_frames, lazy=False):
     super(QueueFrames, self).__init__(env)
-    self._num_frames = num_frames
-    self._obs_queue = None
-    obs_shape = list(self.observation_space.shape) + [num_frames]
-    self.observation_space = spaces.Box(
-        low=self.observation_space.low.min(),
-        high=self.observation_space.high.max(),
-        shape=obs_shape)
-
-  def _reset_obs_queue(self):
-    obs = self.env.reset()
-    obs_queue = np.empty(obs.shape + (self._num_frames,))
-    for i in range(self._num_frames-1):
-      obs_queue[..., i] = np.zeros_like(obs)
-    obs_queue[..., -1] = obs
-    return obs_queue
+    self._obs_queue = deque([], maxlen=num_frames)
+    obs_shape = self.observation_space.shape + (num_frames,)
+    self.observation_space.shape = obs_shape
+    self._lazy = lazy
 
   def step(self, action):
     obs, reward, done, info = self.env.step(action)
-    self._obs_queue = np.append(self._obs_queue[..., 1:],
-                                np.expand_dims(obs, -1), axis=-1)
-    return self._obs_queue, reward, done, info
+    self._obs_queue.append(obs)
+    if self._lazy:
+      obs = LazyFrames(list(self._obs_queue))
+    else:
+      obs = np.dstack(list(self._obs_queue))
+    return obs, reward, done, info
 
   def reset(self):
-    self._obs_queue = self._reset_obs_queue()
-    return self._obs_queue
+    obs = self.env.reset()
+    for _ in range(self._obs_queue.maxlen):
+      self._obs_queue.append(obs)
+    if self._lazy:
+      return LazyFrames(list(self._obs_queue))
+    return np.dstack(list(self._obs_queue))
+
+
+class LazyFrames(object):
+  def __init__(self, frames):
+    self._frames = frames
+
+  def __array__(self, dtype=None):
+    return np.dstack(self._frames)
+
+  def __getitem__(self, i):
+    return np.dstack(self._frames)[i]
+
+  @property
+  def dtype(self):
+    return np.object
+
+  @property
+  def shape(self):
+    return tuple()
 
 
 class SkipFrames(gym.ObservationWrapper):
@@ -270,6 +286,6 @@ def nature_dqn_wrap(env):
   env = MaxBetweenFrames(env)
   env = SkipFrames(env, 4)
   env = ImagePreprocessing(env, (84, 84), grayscale=True)
-  env = QueueFrames(env, 4)
+  env = QueueFrames(env, 4, lazy=True)
   env = ClipReward(env)
   return env
