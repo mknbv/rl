@@ -39,13 +39,11 @@ def is_atari_env(env):
 def wrap_env(env, policy_class):
   if is_atari_env(env):
     if issubclass(policy_class, rl.policies.UniverseStarterPolicy):
-      env = rl.env_wrappers.wrap(env, [
-          rl.env_wrappers.UniverseStarterImageWrapper(),
-          rl.env_wrappers.ClipRewardWrapper()
-        ])
+      env = rl.env_wrappers.UniverseStarterImageWrapper(env)
+      env = rl.env_wrappers.ClipRewardWrapper(env)
     elif issubclass(policy, rl.policies.CNNPolicy):
-      env = rl.env_wrappers.NatureDQNWrapper()(env)
-  env = rl.env_wrappers.LoggingWrapper()(env)
+      env = rl.env_wrappers.nature_dqn_wrap(env)
+  env = rl.env_wrappers.LoggingWrapper(env)
   return env
 
 def create_policy(env, policy_class, name=None):
