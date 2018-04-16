@@ -279,7 +279,7 @@ class Logging(gym.Wrapper):
     return self.env.reset()
 
 
-def nature_dqn_wrap(env):
+def nature_dqn_wrap(env, clip_reward=True):
   env = EpisodicLife(env)
   if "FIRE" in env.unwrapped.get_action_meanings():
     env = FireReset(env)
@@ -288,5 +288,6 @@ def nature_dqn_wrap(env):
   env = SkipFrames(env, 4)
   env = ImagePreprocessing(env, (84, 84), grayscale=True)
   env = QueueFrames(env, 4, lazy=True)
-  env = ClipReward(env)
+  if clip_reward:
+    env = ClipReward(env)
   return env
