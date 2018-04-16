@@ -21,11 +21,11 @@ class ImageCropping(gym.ObservationWrapper):
     return obs[self.offset_height:self.offset_height+self.target_height,
                self.offset_width:self.offset_width+self.target_width, :]
 
-  def _step(self, action):
+  def step(self, action):
     obs, rew, done, info = self.env.step(action)
     return self._crop(obs), rew, done, info
 
-  def _reset(self):
+  def reset(self):
     return self._crop(self.env.reset())
 
 
@@ -47,12 +47,12 @@ class ImagePreprocessing(gym.ObservationWrapper):
       preprocessed = preprocessed.astype(np.float32) / 255.0
     return preprocessed
 
-  def _step(self, action):
+  def step(self, action):
     obs, reward, done, info = self.env.step(action)
     obs = self._preprocess(obs)
     return obs, reward, done, info
 
-  def _reset(self):
+  def reset(self):
     obs = self.env.reset()
     return self._preprocess(obs)
 
@@ -73,12 +73,12 @@ class UniverseStarter(gym.ObservationWrapper):
     obs = np.mean(obs, axis=-1, keepdims=self._keepdims) / 255.0
     return obs
 
-  def _step(self, action):
+  def step(self, action):
     obs, rew, done, info = self.env.step(action)
     obs = self._preprocess_observation(obs)
     return obs, rew, done, info
 
-  def _reset(self):
+  def reset(self):
     return self._preprocess_observation(self.env.reset())
 
 
@@ -87,13 +87,13 @@ class MaxBetweenFrames(gym.ObservationWrapper):
     super(MaxBetweenFrames, self).__init__(env)
     self._last_obs = None
 
-  def _step(self, action):
-    true_obs, reward, done, info = self.env.step(action)
+  def step(self, action):
+    true_obs, rew, done, info = self.env.step(action)
     obs = np.maximum(true_obs, self._last_obs)
     self._last_obs = true_obs
-    return obs, reward, done, info
+    return obs, rew, done, info
 
-  def _reset(self):
+  def reset(self):
     self._last_obs = self.env.reset()
     return self._last_obs
 
@@ -117,19 +117,22 @@ class QueueFrames(gym.ObservationWrapper):
     obs_queue[..., -1] = obs
     return obs_queue
 
-  def _step(self, action):
+  def step(self, action):
     obs, reward, done, info = self.env.step(action)
     self._obs_queue = np.append(self._obs_queue[..., 1:],
                                 np.expand_dims(obs, -1), axis=-1)
     return self._obs_queue, reward, done, info
 
-  def _reset(self):
+  def reset(self):
     self._obs_queue = self._reset_obs_queue()
     return self._obs_queue
 
 
 class ClipReward(gym.RewardWrapper):
-  def _reward(self, reward):
+  def __init__(self, env):
+    super(ClipReward, self).__init__(env)
+
+  def reward(self, reward):
     return np.sign(reward)
 
 
@@ -138,7 +141,7 @@ class Logging(gym.Wrapper):
     super(Logging, self).__init__(env)
     self._episode_counter = 0
 
-  def _step(self, action):
+  def step(self, action):
     if self.first_step:
       self.start_time = datetime.now()
       self.first_step = False
@@ -156,7 +159,7 @@ class Logging(gym.Wrapper):
     info["logging.interactions_per_second"] = interactions_per_second
     return obs, rew, done, info
 
-  def _reset(self):
+  def reset(self):
     self.first_step = True
     self.start_time = None
     self.total_reward = 0
