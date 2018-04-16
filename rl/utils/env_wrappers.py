@@ -21,10 +21,6 @@ class ImageCropping(gym.ObservationWrapper):
 
   def _step(self, action):
     obs, rew, done, info = self.env.step(action)
-    info["image.cropping.offset.height"] = self.offset_height
-    info["image.cropping.offset.width"] = self.offset_width
-    info["image.cropping.target.height"] = self.target_height
-    info["image.cropping.target.width"] = self.target_width
     return self._crop(obs), rew, done, info
 
   def _reset(self):
@@ -52,10 +48,6 @@ class ImagePreprocessing(gym.ObservationWrapper):
   def _step(self, action):
     obs, reward, done, info = self.env.step(action)
     obs = self._preprocess(obs)
-    info["image.preprocessing"] = {
-        "shape": self._shape,
-        "grayscale": self._grayscale
-    }
     return obs, reward, done, info
 
   def _reset(self):
@@ -97,12 +89,6 @@ class MaxBetweenFrames(gym.ObservationWrapper):
     true_obs, reward, done, info = self.env.step(action)
     obs = np.maximum(true_obs, self._last_obs)
     self._last_obs = true_obs
-    if "max.between.observations" in info:
-      raise gym.error.Error(
-          "Key 'max.between.observations' already in "\
-          "info. Make sure you are not stacking the "\
-          "MaxBetweenObservations wrappers.")
-    info["max.between.observations"] = ""
     return obs, reward, done, info
 
   def _reset(self):
@@ -133,10 +119,6 @@ class QueueFrames(gym.ObservationWrapper):
     obs, reward, done, info = self.env.step(action)
     self._obs_queue = np.append(self._obs_queue[..., 1:],
                                 np.expand_dims(obs, -1), axis=-1)
-    if "queue.num_frames" in info:
-      raise gym.error.Error("Key 'queue.num_frames' already in info. Make "\
-            "sure you are not stacking the QueueFrames wrappers.")
-    info["queue.num_frames"] = self._num_frames
     return self._obs_queue, reward, done, info
 
   def _reset(self):
@@ -159,9 +141,6 @@ class Logging(gym.Wrapper):
       self.start_time = datetime.now()
       self.first_step = False
     obs, rew, done, info = self.env.step(action)
-    if "logging.total_reward" in info:
-      raise ValueError("Key 'logging.total_reward' already in info. Make "\
-          "sure you are not stacking the Logging wrappers.")
     self.total_reward += rew
     self.episode_length += 1
     info["logging.total_reward"] = self.total_reward
