@@ -29,6 +29,52 @@ class ImageCropping(gym.ObservationWrapper):
     return self._crop(self.env.reset())
 
 
+class EpisodicLife(gym.Wrapper):
+  def __init__(self, env):
+    super(EpisodicLife, self).__init__(env)
+    self._lives = 0
+    self._real_done = True
+
+  def step(self, action):
+    obs, rew, done, info = self.env.step(action)
+    self._real_done = done
+    info["real_done"] = done
+    lives = self.env.unwrapped.ale.lives()
+    if lives < self._lives and lives > 0:
+      done = True
+    self._lives = lives
+    return obs, rew, done, info
+
+  def reset(self):
+    if self._real_done:
+      obs = self.env.reset()
+    else:
+      obs, _, _, _ = self.env.step(0)
+    self._lives = self.env.unwrapped.ale.lives()
+    return obs
+
+
+class FireReset(gym.Wrapper):
+  def __init__(self, env):
+    super(FireReset, self).__init__(env)
+    if len(env.unwrapped.get_action_meanings()) < 3 or\
+        env.unwrapped.get_action_meanings()[1] != "FIRE":
+      raise TypeError()
+
+  def step(self, action):
+    return self.env.step(action)
+
+  def reset(self):
+    self.env.reset()
+    obs, _, done, _ = self.env.step(1)
+    if done:
+      self.env.reset()
+    obs, _, done, _ = self.env.step(2)
+    if done:
+      self.env.reset()
+    return obs
+
+
 class ImagePreprocessing(gym.ObservationWrapper):
   def __init__(self, env, grayscale):
     super(ImagePreprocessing, self).__init__(env)
@@ -136,6 +182,30 @@ class ClipReward(gym.RewardWrapper):
     return np.sign(reward)
 
 
+class StartWithRandomActions(gym.Wrapper, gym.envs.atari.AtariEnv):
+  def __init__(self, env, max_random_actions=30):
+    super(StartWithRandomActions, self).__init__(env)
+    self._max_random_actions = max_random_actions
+    self._real_done = True
+
+  def step(self, action):
+    obs, rew, done, info = self.env.step(action)
+    # Always start with random actions if real_done is not in info.
+    self._real_done = info.get("real_done", True)
+    return obs, rew, done, info
+
+  def reset(self):
+    if self._real_done:
+      self._real_done = False
+      n = np.random.randint(self._max_random_actions+1)
+      obs = self.env.reset()
+      for _ in range(n):
+        obs, _, _, _ = self.env.step(self.env.action_space.sample())
+      return obs
+    else:
+      return self.env.reset()
+
+
 class Logging(gym.Wrapper):
   def __init__(self, env):
     super(Logging, self).__init__(env)
@@ -169,6 +239,10 @@ class Logging(gym.Wrapper):
 
 
 def nature_dqn_wrap(env):
+  env = EpisodicLife(env)
+  if "FIRE" in env.unwrapped.get_action_meanings():
+    env = FireReset(env)
+  env = StartWithRandomActions(env, max_random_actions=30)
   env = MaxBetweenFrames(env)
   env = ImagePreprocessing(env, (84, 84), grayscale=True)
   env = QueueFrames(env, 4)
