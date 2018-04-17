@@ -60,11 +60,25 @@ class BasePolicy(tfu.NetworkStructure):
     return grad_list
 
 
-class MLPCore(object):
+class BaseCore(abc.ABC):
+  @property
+  def suggested_initializer(self):
+    return None
+
+  @abc.abstractmethod
+  def __call__(self):
+    ...
+
+
+class MLPCore(BaseCore):
   def __init__(self, num_layers, units, activation=tf.nn.tanh):
     self._num_layers = num_layers
     self._units = units
     self._activation = activation
+
+  @property
+  def suggested_initializer(self):
+    return tfu.orthogonal_initializer(np.sqrt(2))
 
   def __call__(self):
     layers = []
@@ -93,18 +107,24 @@ def _nips_dqn_core():
         filters=16,
         kernel_size=8,
         strides=4,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initialzier=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Conv2D(
         filters=32,
         kernel_size=4,
         strides=2,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initialzier=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Flatten(),
       tfl.layers.Dense(
         units=256,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initialzier=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       )
   ]
 
@@ -135,11 +155,15 @@ def _nature_dqn_core():
       )
   ]
 
-class DQNCore(object):
+class DQNCore(BaseCore):
   def __init__(self, kind):
     if not kind in ["nature", "nips"]:
       raise TypeError("kind must be one of ['nature', 'nips']")
     self._kind = kind
+
+  @property
+  def suggested_initializer(self):
+    return tfu.torch_default_initializer()
 
   def __call__(self):
     if self._kind == "nips":
@@ -148,7 +172,7 @@ class DQNCore(object):
       return _nature_dqn_core()
 
 
-class UniverseStarterCore(object):
+class UniverseStarterCore(BaseCore):
   def __init__(self, recurrent=True):
     self._recurrent = recurrent
 
