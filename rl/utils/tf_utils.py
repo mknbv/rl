@@ -16,8 +16,9 @@ def lazy_function(function):
         return getattr(self, attribute)
     return decorator
 
-def flatten(t):
-  return tf.reshape(t, [-1, np.prod(t.shape[1:]).value])
+def purge_orphaned_summaries(summary_writer, step):
+  summary_writer.add_session_log(
+    tf.SessionLog(status=tf.SessionLog.START), step)
 
 def orthogonal_initializer(scale=1.0):
   # taken from https://github.com/openai/baselines/tree/master/baselines/ppo2

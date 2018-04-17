@@ -126,8 +126,7 @@ class DistributedTrainer(object):
       step = sess.run(global_step)
       # This will allow tensorboard to discard "orphaned" summaries when
       # reloading from checkpoint.
-      summary_writer.add_session_log(
-          tf.SessionLog(status=tf.SessionLog.START), step)
+      purge_orphaned_summaries(self.summary_writer, step)
       last_summary_step = step - self._summary_period
       while not sess.should_stop() and step < num_steps:
         step = self.step(algorithm)
