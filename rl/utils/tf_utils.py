@@ -43,6 +43,25 @@ def normalized_columns_initializer(stddev=1.0):
     return tf.constant(out)
   return _initializer
 
+
+def torch_default_initializer():
+  """Default initializer in torch.
+
+   The initializer is similar to the He uniform initializer as
+   described in  http://arxiv.org/abs/1502.01852, but uses
+   different value in numerator.
+
+   https://github.com/torch/nn/blob/master/Linear.lua#L21
+   https://github.com/torch/nn/blob/master/SpatialConvolution.lua#L34
+  """
+  def _initializer(shape, dtype=None, partition_info=None):
+    shape = tuple(shape)
+    fan_in = np.prod(shape[:-1])
+    stddev = 1. / np.sqrt(fan_in)
+    return tf.random_uniform(shape, minval=-stddev, maxval=stddev, dtype=dtype)
+  return _initializer
+
+
 def partial_restore(variables, checkpoint, session=None, scope=None):
   meta_file = checkpoint + ".meta"
   with tf.Graph().as_default(), tf.Session() as sess, sess.as_default():
@@ -55,6 +74,16 @@ def partial_restore(variables, checkpoint, session=None, scope=None):
     }
   for v in variables:
     v.load(checkpoint_vars[v.name])
+
+
+def huber_loss(x, delta=1.0):
+  with tf.variable_scope("huber_loss"):
+    abs_x = tf.abs(x)
+    return tf.where(
+        abs_x < delta,
+        0.5 * tf.square(x),
+        delta * (abs_x - 0.5 * delta)
+    )
 
 
 @contextlib.contextmanager
