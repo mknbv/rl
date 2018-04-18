@@ -224,7 +224,7 @@ def perform(env_id, arg_list=None):
   env = gym.make(env_id)
   if args.render:
     env = RenderEverything(env)
-  env = rl.env_wrappers.nature_dqn_wrap(env, evaluation=True)
+  env = rl.env_wrappers.nature_dqn_wrap(env, clip_reward=False)
 
   policy = rl.policies.DistributionalPolicy(
       env.observation_space.shape,
