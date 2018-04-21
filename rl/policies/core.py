@@ -108,7 +108,7 @@ def _nips_dqn_core():
         kernel_size=8,
         strides=4,
         activation=tf.nn.relu,
-        kernel_initialzier=tfu.torch_default_initializer(),
+        kernel_initializer=tfu.torch_default_initializer(),
         bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Conv2D(
@@ -116,14 +116,14 @@ def _nips_dqn_core():
         kernel_size=4,
         strides=2,
         activation=tf.nn.relu,
-        kernel_initialzier=tfu.torch_default_initializer(),
+        kernel_initializer=tfu.torch_default_initializer(),
         bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Flatten(),
       tfl.layers.Dense(
         units=256,
         activation=tf.nn.relu,
-        kernel_initialzier=tfu.torch_default_initializer(),
+        kernel_initializer=tfu.torch_default_initializer(),
         bias_initializer=tfu.torch_default_initializer()
       )
   ]
@@ -134,24 +134,32 @@ def _nature_dqn_core():
         filters=32,
         kernel_size=8,
         strides=4,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initializer=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Conv2D(
         filters=64,
         kernel_size=4,
         strides=2,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initializer=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Conv2D(
         filters=64,
         kernel_size=3,
         strides=1,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initializer=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       ),
       tf.layers.Flatten(),
       tf.layers.Dense(
         units=512,
-        activation=tf.nn.relu
+        activation=tf.nn.relu,
+        kernel_initializer=tfu.torch_default_initializer(),
+        bias_initializer=tfu.torch_default_initializer()
       )
   ]
 
