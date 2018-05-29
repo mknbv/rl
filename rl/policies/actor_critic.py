@@ -1,13 +1,12 @@
 import abc
-import math
 
-import gym.spaces as spaces
+from gym import spaces
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 from .distribution import DefaultDistributionCreator
-from .core import (_check_space_type, BasePolicy, MLPCore, DQNCore,
+from .core import (_check_space_type, BasePolicy, MLPCore, NIPSDQNCore,
                    UniverseStarterCore)
 import rl.utils.tf_utils as tfu
 
@@ -68,13 +67,11 @@ class MLPPolicy(ActorCriticPolicy):
     self._clipping_param = clipping_param
     self._joint = joint
     # _create_distribution will add the last hidden layer.
+    self._policy_core = MLPCore(num_layers=num_layers-1, units=units)
     if self._joint:
-      self._core_layers = mlp_core(num_layers=num_layers-1, units=units)
+      self._value_core = None
     else:
-      self._core_layers = [
-          mlp_core(num_layers=num_layers-1, units=units),
-          mlp_core(num_layers=num_layers-1, units=units)
-      ]
+      self._value_core = MLPCore(num_layers=num_layers-1, units=units)
 
   def _build(self):
     obs_shape = list(self._observation_space.shape)
@@ -85,16 +82,23 @@ class MLPPolicy(ActorCriticPolicy):
   def _build_network(self, inputs):
     x = pi = critic = inputs
     if self._joint:
-      for layer in self._core_layers:
+      for layer in self._policy_core.layers:
         x = pi = critic = layer.apply(x)
     else:
-      for pi_layer, critic_layer in zip(*self._core_layers):
+      for pi_layer, critic_layer in zip(self._policy_core.layers,
+                                        self._value_core.layers):
         pi = pi_layer.apply(pi)
         critic = critic_layer.apply(critic)
     self._distribution = self._distribution_creator.create_distribution(
         pi, self._action_space)
     self._sample = self._distribution.sample()
-    self._critic_tensor = tf.layers.dense(critic, units=1, name="critic")
+    self._critic_tensor = tf.layers.dense(
+      critic,
+      units=1,
+      kernel_initializer=self._value_core.kernel_initializer,
+      bias_initializer=self._value_core.bias_initializer,
+      name="critic"
+    )
 
   def preprocess_gradients(self, grad_list):
     if self._clipping_param is not None:
@@ -111,20 +115,32 @@ class A3CAtariPolicy(ActorCriticPolicy):
     super(A3CAtariPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
-    self._core_layers = dqn_core(kind="nips")
+    self._core = NIPSDQNCore()
 
   def _build(self):
-    self._observations = tf.placeholder(tf.float32, [None] + obs_shape,
+    obs_type = self._observation_space.dtype
+    obs_shape = self._observation_space.shape
+    self._observations = tf.placeholder(obs_type, [None] + obs_shape,
                                         name="observations")
 
     x = self._observations
-    for layer in self._core_layers:
+    for layer in self._core.layers:
       x = layer.apply(x)
 
-    self._logits = tf.layers.dense(x, units=self._action_space.n, name="logits")
+    self._logits = tf.layers.dense(
+        x,
+        units=self._action_space.n,
+        kernel_initializer=self._core.kernel_initializer,
+        bias_initializer=self._core.bias_initializer,
+        name="logits")
     self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
-    self._critic_tensor = tf.layers.dense(x, units=1, name="critic")
+    self._critic_tensor = tf.layers.dense(
+        x,
+        units=1,
+        kernel_initializer=self._core.kernel_initializer,
+        bias_initializer=self._core.bias_initializer,
+        name="critic")
 
 
 class UniverseStarterPolicy(ActorCriticPolicy):
@@ -148,7 +164,7 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     self._observations = tf.placeholder(tf.float32, [None] + obs_shape,
                                         name="observations")
     x = self._observations
-    for layer in self._core():
+    for layer in self._core.layers:
       if isinstance(layer, rnn.RNNCell):
         x = self._apply_recurrent_layer(x, layer)
       else:
