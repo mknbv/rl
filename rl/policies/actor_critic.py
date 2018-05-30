@@ -8,6 +8,7 @@ import tensorflow.contrib.rnn as rnn
 from .distribution import DefaultDistributionCreator
 from .core import _check_space_type, BasePolicy, MLPCore, UniverseStarterCore
 import rl.utils.tf_utils as tfu
+from rl.utils.env_batch import SpaceBatch
 
 
 USE_DEFAULT = object()
@@ -29,12 +30,13 @@ class ActorCriticPolicy(BasePolicy):
   def critic_tensor(self):
     return self._critic_tensor
 
-  def act(self, observation, sess=None):
+  def act(self, observations, sess=None):
     sess = sess or tf.get_default_session()
-    actions, critic_values = sess.run(
-        [self._sample, self.critic_tensor],
-        {self.observations: observation[None, :]})
-    return actions[0], critic_values[0, 0]
+    fetches = {
+        "actions": self._sample,
+        "critic_values": self.critic_tensor
+    }
+    return sess.run(fetches, {self.observations: observations})
 
 
 class MLPPolicy(ActorCriticPolicy):
@@ -209,17 +211,20 @@ class UniverseStarterPolicy(ActorCriticPolicy):
   def reset(self):
     self._state_values = self._initial_state_values
 
-  def act(self, observation, sess=None):
+  def act(self, observations, sess=None):
     sess = sess or tf.get_default_session()
     fetches = [self._sample, self.critic_tensor]
-    feed_dict = {self.observations: observation[None, :]}
+    feed_dict = {self.observations: observations}
     if self._recurrent:
       fetches.append(self._state_outputs)
       feed_dict[self.state_inputs] = self.state_values
       actions, critic_values, self._state_values = sess.run(fetches, feed_dict)
     else:
       actions, critic_values = sess.run(fetches, feed_dict)
-    return actions[0], critic_values[0, 0]
+    return {
+        "actions": actions,
+        "critic_values": critic_values
+    }
 
   def preprocess_gradients(self, grad_list):
     if self._recurrent:

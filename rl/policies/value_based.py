@@ -42,16 +42,16 @@ class ValueBasedPolicy(BasePolicy):
   def target(self):
     return self._target
 
-  def act(self, observation, epsilon_value=None, sess=None):
+  def act(self, observations, epsilon_value=None, sess=None):
     sess = sess or tf.get_default_session()
     if epsilon_value is None:
       epsilon_value = sess.run(self.epsilon)
     if np.random.random() <= epsilon_value:
-      return self._action_space.sample()
+      return {"actions": np.asarray([self._action_space.sample()
+                                     for _ in range(observations.shape[0])])}
     else:
-      values = sess.run(self.values,
-                        feed_dict={self.observations: observation[None,:]})
-      return np.argmax(values)
+      values = sess.run(self.values, {self.observations: observations})
+      return {"actions": np.argmax(values, axis=-1)}
 
 
 class DistributionalPolicy(ValueBasedPolicy):
