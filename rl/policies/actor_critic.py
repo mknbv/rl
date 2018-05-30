@@ -1,22 +1,14 @@
 import abc
 
-from gym import spaces
+import gym.spaces as spaces
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 from .distribution import DefaultDistributionCreator
-from .core import (_check_space_type, BasePolicy, MLPCore, NIPSDQNCore,
-                   UniverseStarterCore)
+from .core import _check_space_type, BasePolicy, MLPCore, UniverseStarterCore
 import rl.utils.tf_utils as tfu
 
-
-__all__ = [
-    "ActorCriticPolicy",
-    "MLPPolicy",
-    "A3CAtariPolicy",
-    "UniverseStarterPolicy"
-]
 
 USE_DEFAULT = object()
 
@@ -106,24 +98,28 @@ class MLPPolicy(ActorCriticPolicy):
     return grad_list
 
 
-class A3CAtariPolicy(ActorCriticPolicy):
+class CategoricalActorCriticPolicy(ActorCriticPolicy):
   metadata = {"visualize_observations": True}
 
-  def __init__(self, observation_space, action_space, name=None):
+  def __init__(self, observation_space, action_space, core,
+               ubyte_rescale=True, name=None):
     _check_space_type("observation_space", observation_space, spaces.Box)
-    _check_space_type("ation_space", action_space, spaces.Discrete)
-    super(A3CAtariPolicy, self).__init__(name=name)
+    _check_space_type("action_space", action_space, spaces.Discrete)
+    super(CategoricalActorCriticPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
-    self._core = NIPSDQNCore()
+    self._core = core
+    self._ubyte_rescale = ubyte_rescale
 
   def _build(self):
     obs_type = self._observation_space.dtype
-    obs_shape = self._observation_space.shape
-    self._observations = tf.placeholder(obs_type, [None] + obs_shape,
+    obs_shape = (None,) + self._observation_space.shape
+    self._observations = tf.placeholder(obs_type, obs_shape,
                                         name="observations")
 
-    x = self._observations
+    x = tf.to_float(self._observations)
+    if obs_type == np.uint8 and self._ubyte_rescale:
+      x = x / 255.0
     for layer in self._core.layers:
       x = layer.apply(x)
 

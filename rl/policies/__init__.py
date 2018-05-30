@@ -6,6 +6,6 @@ from .core import (BasePolicy,
                    UniverseStarterCore)
 from .actor_critic import (ActorCriticPolicy,
                            MLPPolicy,
-                           A3CAtariPolicy,
+                           CategoricalActorCriticPolicy,
                            UniverseStarterPolicy)
 from .value_based import ValueBasedPolicy, DistributionalPolicy
