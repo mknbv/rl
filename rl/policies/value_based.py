@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from gym import spaces
 import numpy as np
 import tensorflow as tf
@@ -25,6 +27,7 @@ class ValueBasedPolicy(BasePolicy):
     if not self._is_target and self._target is None:
       kwargs["name"] = self.scope.name + "_target"
       kwargs["is_target"] = True
+      kwargs["core"] = deepcopy(kwargs["core"])
       self._target = self.__class__(**kwargs)
 
   @property
@@ -77,14 +80,14 @@ class DistributionalPolicy(ValueBasedPolicy):
     return self._output_tensor
 
   def _build(self):
-    obs_shape = (None,) + self._observation_shape
-    self._observations = tf.placeholder(self._observation_type, obs_shape,
-                                        name="observations")
+    obs_shape = (None,) + self._observation_space.shape
+    self._observations = tf.placeholder(self._observation_space.dtype,
+                                        obs_shape, name="observations")
     x = tf.to_float(self._observations)
     if self._observations.dtype == np.uint8 and self._ubyte_rescale:
       x = x / 255.0
 
-    for layer in self._core():
+    for layer in self._core.layers:
       if isinstance(layer, tf.contrib.rnn.RNNCell):
         raise TypeError(
           "DistriubutionalPolicy does not support recurrent layers,"
@@ -97,9 +100,10 @@ class DistributionalPolicy(ValueBasedPolicy):
         x,
         units=final_units,
         activation=None,
-        kernel_initializer=self._core.suggested_initializer,
-        bias_initializer=self._core.suggested_initializer,
+        kernel_initializer=self._core.kernel_initializer,
+        bias_initializer=self._core.bias_initializer,
         name="output"
     )
-    self._output_tensor = tf.reshape(x, [-1, self._action_space.n, self._nbins])
+    self._output_tensor = tf.reshape(
+        x, [-1, self._action_space.n, self._nbins])
     self._values = tf.reduce_mean(self.output_tensor, axis=-1, name="values")
