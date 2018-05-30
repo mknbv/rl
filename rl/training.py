@@ -1,3 +1,4 @@
+from copy import copy
 from contextlib import contextmanager
 import logging
 
@@ -8,26 +9,91 @@ from rl.utils.tf_utils import purge_orphaned_summaries
 USE_DEFAULT = object()
 
 
+class SummaryManager(object):
+  def __init__(self, logdir=None, summary_writer=None, summary_period=None,
+               last_summary_step=None):
+    if (logdir is None) == (summary_writer is None):
+      raise ValueError("exactly one of logdir or summary_writer must be set")
+
+    if summary_writer is None:
+      summary_writer = tf.summary.FileWriterCache.get(logdir)
+    self._summary_writer = summary_writer
+    self._summary_period = summary_period
+    self._last_summary_step = last_summary_step
+
+  @property
+  def summary_writer(self):
+    return self._summary_writer
+
+  def copy(self):
+    return copy(self)
+
+  def _get_step(self, step, session=None):
+    if isinstance(step, (tf.Variable, tf.Tensor)):
+      if session is None:
+        raise ValueError("session is None when step is instance %s"
+                         % type(step))
+      step = session.run(step)
+    return step
+
+  def summary_time(self, step, session=None):
+    step = self._get_step(step, session)
+    if self._summary_period is None:
+      return False
+    elif self._last_summary_step is None:
+      return True
+    else:
+      return step - self._last_summary_step >= self._summary_period
+
+  def add_summary(self, summary, step, session=None,
+                  update_last_summary_step=True):
+    step = self._get_step(step, session)
+    if step is None:
+      step = session.run(self._step)
+    self._summary_writer.add_summary(summary, global_step=step)
+    if update_last_summary_step:
+      self._last_summary_step = step
+
+  def add_summary_dict(self, summary_dict, step, session=None,
+                       update_last_summary_step=True):
+    summary = tf.Summary()
+    for key, val in summary_dict.items():
+      summary.value.add(tag=key, simple_value=val)
+    self.add_summary(summary, step=step, session=session,
+                     update_last_summary_step=update_last_summary_step)
+
+
 class DistributedTrainer(object):
   def __init__(self,
                target,
                is_chief,
-               logdir,
-               summary_period,
-               checkpoint_period,
+               summary_manager=None,
+               checkpoint_dir=None,
+               checkpoint_period=None,
                checkpoint=None,
                config=USE_DEFAULT):
     self._target = target
     self._is_chief = is_chief
-    self._logdir = logdir
-    self._summary_period = summary_period
+    self._summary_manager = summary_manager
+    if (summary_manager is None
+        and checkpoint_dir is None
+        and checkpoint_period is not None):
+      raise ValueError("Either summary_manager or checkpoint_dir must be"
+                       " specified when checkpoint_period is not None")
+    if checkpoint_dir is not None and checkpoint_period is None:
+      raise ValueError("checkpoint_period must be specified"
+                       " when checkpoint_dir is not None")
+
+    if checkpoint_period is not None and checkpoint_dir is None:
+      checkpoint_dir = summary_manager.summary_writer.get_logdir()
+
+    self._checkpoint_dir = checkpoint_dir
     self._checkpoint_period = checkpoint_period
     self._checkpoint = checkpoint
     if config == USE_DEFAULT:
       config = self._get_default_config()
     self._config = config
     self._session = None
-    self._last_summary_step = None
 
   def _get_default_config(self):
     config = tf.ConfigProto(intra_op_parallelism_threads=1,
@@ -36,10 +102,6 @@ class DistributedTrainer(object):
     # https://github.com/tensorflow/tensorflow/issues/1578
     config.gpu_options.allow_growth = True
     return config
-
-  @property
-  def summary_writer(self):
-    return tf.summary.FileWriterCache.get(self._logdir)
 
   @contextmanager
   def managed_session(self, hooks=None):
@@ -79,10 +141,9 @@ class DistributedTrainer(object):
 
     if (summary_time is None
         and algorithm is not None
-        and self._is_chief
-        and (self._last_summary_step is None\
-             or step - self._last_summary_step >= self._summary_period)):
-        summary_time = True
+        and self._summary_manager is not None
+        and self._summary_manager.summary_time(step=step)):
+      summary_time = True
 
     run_fetches = {}
     if fetches is not None:
@@ -108,8 +169,7 @@ class DistributedTrainer(object):
     values = sess.run(run_fetches, feed_dict)
     if summary_time:
       logging.info("Step #{}, {}".format(step, values["logging"]))
-      self.summary_writer.add_summary(values["summaries"], step)
-      self._last_summary_step = step
+      self._summary_manager.add_summary(values["summaries"], step=step)
 
     if "fetches" in values:
       return step, values["fetches"]
@@ -133,16 +193,16 @@ class DistributedTrainer(object):
 
 class SingularTrainer(DistributedTrainer):
   def __init__(self,
-               logdir,
-               summary_period,
-               checkpoint_period,
+               summary_manager=None,
+               checkpoint_dir=None,
+               checkpoint_period=None,
                checkpoint=None,
                config=USE_DEFAULT):
     super(SingularTrainer, self).__init__(
         target='',
         is_chief=True,
-        logdir=logdir,
-        summary_period=summary_period,
+        summary_manager=summary_manager,
+        checkpoint_dir=checkpoint_dir,
         checkpoint_period=checkpoint_period,
         checkpoint=checkpoint,
         config=config)
