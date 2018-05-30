@@ -1,12 +1,11 @@
 import abc
 
-import gym.spaces as spaces
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
 from .distribution import DefaultDistributionCreator
-from .core import _check_space_type, BasePolicy, MLPCore, UniverseStarterCore
+from .core import BasePolicy, MLPCore, UniverseStarterCore
 import rl.utils.tf_utils as tfu
 from rl.utils.env_batch import SpaceBatch
 
@@ -49,7 +48,6 @@ class MLPPolicy(ActorCriticPolicy):
                clipping_param=10,
                joint=False,
                name=None):
-    _check_space_type("observation_space", observation_space, spaces.Box)
     super(MLPPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
@@ -105,8 +103,6 @@ class CategoricalActorCriticPolicy(ActorCriticPolicy):
 
   def __init__(self, observation_space, action_space, core,
                ubyte_rescale=True, name=None):
-    _check_space_type("observation_space", observation_space, spaces.Box)
-    _check_space_type("action_space", action_space, spaces.Discrete)
     super(CategoricalActorCriticPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
@@ -146,8 +142,6 @@ class UniverseStarterPolicy(ActorCriticPolicy):
 
   def __init__(self, observation_space, action_space,
                recurrent=True, name=None):
-    _check_space_type("observation_space", observation_space, spaces.Box)
-    _check_space_type("action_space", action_space, spaces.Discrete)
     super(UniverseStarterPolicy, self).__init__(name=name)
     self._state_inputs = None
     self._state_values = None
@@ -184,15 +178,19 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     )
 
   def _apply_recurrent_layer(self, x, layer):
-    x = tf.expand_dims(x, [0])
+    if isinstance(self._observation_space, SpaceBatch):
+      batch_size = len(self._observation_space.spaces)
+      x = tf.reshape(x, (batch_size, -1) + x.shape[1:])
+    else:
+      batch_size = 1
+      x = tf.expand_dims(x, [0])
     step_size = tf.shape(x)[1:2]
     self._state_inputs = rnn.LSTMStateTuple(
-        c=tf.placeholder(tf.float32, [1, layer.state_size.c]),
-        h=tf.placeholder(tf.float32, [1, layer.state_size.h]))
+        c=tf.placeholder(tf.float32, [batch_size, layer.state_size.c]),
+        h=tf.placeholder(tf.float32, [batch_size, layer.state_size.h]))
     self._initial_state_values = rnn.LSTMStateTuple(
         c=np.zeros(self._state_inputs.c.shape.as_list()),
-        h=np.zeros(self._state_inputs.c.shape.as_list())
-      )
+        h=np.zeros(self._state_inputs.c.shape.as_list()))
     self._state_values = self._initial_state_values
     layer_outputs, self._state_outputs = tf.nn.dynamic_rnn(
         layer, x, initial_state=self._state_inputs, sequence_length=step_size,
@@ -208,8 +206,11 @@ class UniverseStarterPolicy(ActorCriticPolicy):
   def state_values(self):
     return self._state_values
 
-  def reset(self):
-    self._state_values = self._initial_state_values
+  def reset(self, mask):
+    if not np.all(mask):
+      raise NotImplementedError()
+    if self._recurrent:
+      self._state_values = self._initial_state_values
 
   def act(self, observations, sess=None):
     sess = sess or tf.get_default_session()
