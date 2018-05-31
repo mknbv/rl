@@ -4,7 +4,8 @@ import logging
 
 import tensorflow as tf
 
-from rl.utils.tf_utils import purge_orphaned_summaries
+from rl.utils.tf_utils import (purge_orphaned_summaries
+                               as _purge_orphaned_summaries)
 
 USE_DEFAULT = object()
 
@@ -104,28 +105,46 @@ class DistributedTrainer(object):
     return config
 
   @contextmanager
-  def managed_session(self, hooks=None):
-    # Take only ps variables to save and check if initialization completed.
-    ps_variables = list(filter(lambda v: v.device.startswith("/job:ps/"),
-                               tf.global_variables()))
-    ready_op = tf.report_uninitialized_variables(ps_variables)
-    saver = tf.train.Saver(ps_variables)
+  def managed_session(self, init_vars=None, restore_vars=None,
+                      save_vars=None, hooks=USE_DEFAULT,
+                      purge_orphaned_summaries=True):
+    if init_vars is None:
+      init_vars = list(filter(
+        lambda v: v.device.startswith("/job:ps/"),
+        tf.global_variables()
+      ))
+    if restore_vars is None:
+      restore_vars = init_vars
+    if save_vars is None:
+      save_vars = init_vars
+    ready_op = tf.report_uninitialized_variables(init_vars)
+    restorer = tf.train.Saver(restore_vars)
     scaffold = tf.train.Scaffold(ready_for_local_init_op=ready_op,
-                                 ready_op=ready_op, saver=saver)
-    if self._is_chief and hooks is None:
-      hooks = [
-          tf.train.CheckpointSaverHook(
-              self._logdir, saver=saver,
-              save_steps=self._checkpoint_period
-          ),
-      ]
+                                 ready_op=ready_op, saver=restorer)
+
+    if hooks == USE_DEFAULT:
+      if self._is_chief and self._checkpoint_dir is not None:
+        saver = tf.train.Saver(save_vars)
+        hooks = [
+            tf.train.CheckpointSaverHook(
+              checkpoint_dir=self._checkpoint_dir, saver=saver,
+              save_steps=self._checkpoint_period)
+        ]
+      else:
+        hooks = None
+
+    if self._is_chief:
       session_creator = tf.train.ChiefSessionCreator(
           scaffold=scaffold, master=self._target,
           config=self._config, checkpoint_filename_with_path=self._checkpoint)
     else:
       session_creator = tf.train.WorkerSessionCreator(
           scaffold=scaffold, master=self._target, config=self._config)
+
     with tf.train.MonitoredSession(session_creator, hooks=hooks) as sess:
+      if purge_orphaned_summaries and self._summary_manager is not None:
+        _purge_orphaned_summaries(self._summary_manager.summary_writer,
+                                  sess.run(tf.train.get_global_step()))
       self._session = sess
       yield sess
 
@@ -208,22 +227,28 @@ class SingularTrainer(DistributedTrainer):
         config=config)
 
   @contextmanager
-  def managed_session(self, restore_vars=None, save_vars=None,
-                      hooks=USE_DEFAULT):
+  def managed_session(self, save_vars=None, restore_vars=None,
+                      hooks=USE_DEFAULT, purge_orphaned_summaries=True):
     if self._checkpoint is not None:
       restorer = tf.train.Saver(restore_vars)
     if hooks == USE_DEFAULT:
-      saver = tf.train.Saver(save_vars)
-      hooks = [
-          tf.train.CheckpointSaverHook(
-              self._logdir,
-              saver=saver,
-              save_steps=self._checkpoint_period
-            ),
-      ]
+      if self._checkpoint_dir is not None:
+        saver = tf.train.Saver(save_vars)
+        hooks = [
+            tf.train.CheckpointSaverHook(
+                self._checkpoint_dir,
+                saver=saver,
+                save_steps=self._checkpoint_period
+              ),
+        ]
+      else:
+        hooks = None
     with tf.train.SingularMonitoredSession(hooks=hooks,
                                            config=self._config) as sess:
       if self._checkpoint is not None:
         restorer.restore(sess, self._checkpoint)
+      if purge_orphaned_summaries and self._summary_manager is not None:
+        _purge_orphaned_summaries(self._summary_manager.summary_writer,
+                                  sess.run(tf.train.get_global_step()))
       self._session = sess
       yield sess
