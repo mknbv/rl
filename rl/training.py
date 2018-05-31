@@ -198,16 +198,16 @@ class DistributedTrainer(object):
   def train(self, algorithm, num_steps):
     global_step = tf.train.get_global_step()
 
-    with self.managed_session() as sess:
-      algorithm.start_training(sess, self.summary_writer,
-                               self._summary_period)
+    def _train(sess):
       step = sess.run(global_step)
-      # This will allow tensorboard to discard "orphaned" summaries when
-      # reloading from checkpoint.
-      purge_orphaned_summaries(self.summary_writer, step)
-      last_summary_step = step - self._summary_period
       while not sess.should_stop() and step < num_steps:
         step = self.step(algorithm)
+
+    if self._session is not None:
+      _train(self._session)
+    else:
+      with self.managed_session() as sess:
+        _train(sess)
 
 
 class SingularTrainer(DistributedTrainer):
