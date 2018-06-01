@@ -51,9 +51,10 @@ class BaseInteractionsProducer(abc.ABC):
 
 
 class OnlineInteractionsProducer(BaseInteractionsProducer):
-  def __init__(self, env, policy, batch_size, env_step=None):
+  def __init__(self, env, policy, batch_size, cutoff=True, env_step=None):
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
                                                      env_step=env_step)
+    self._cutoff = cutoff
 
   def start(self, session, summary_manager=None):
     super(OnlineInteractionsProducer, self).start(session, summary_manager)
@@ -103,9 +104,7 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
           if self._summary_manager.summary_time(step=env_step):
             self._summary_manager.add_summary_dict(
                 info.get("summaries", info), step=env_step)
-        # Recurrent policies require trajectory to end when episode ends.
-        # Otherwise the batch may combine interactions from differen episodes.
-        if self._policy.state_inputs is not None:
+        if self._cutoff:
           traj["num_timesteps"] = i + 1
           break
 
