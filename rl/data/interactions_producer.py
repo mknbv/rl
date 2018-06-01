@@ -1,7 +1,5 @@
 import abc
-import copy
 import logging
-import threading
 
 from gym import spaces
 import numpy as np
@@ -100,10 +98,9 @@ class BaseInteractionsProducer(abc.ABC):
 
 
 class OnlineInteractionsProducer(BaseInteractionsProducer):
-  def __init__(self, env, policy, batch_size, queue=None, env_step=None):
+  def __init__(self, env, policy, batch_size, env_step=None):
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
                                                      env_step=env_step)
-    self._queue = queue
 
     if self._policy.metadata.get("visualize_observations", False):
       # We cannot create tensor with this summary inside of `start` call,
@@ -142,13 +139,7 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
     if self._policy.state_values is not None:
       self._trajectory["policy_state"] = self._policy.state_values
 
-    # Launch policy.
-    if self._queue is not None:
-      thread = threading.Thread(target=self._feed_queue, daemon=True)
-      logging.info("Launching daemon agent")
-      thread.start()
-
-  def rollout(self):
+  def next(self):
     traj = self._trajectory
     observations = traj["observations"]
     actions = traj["actions"]
@@ -176,12 +167,6 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
           break
 
     self._update_env_step(traj["num_timesteps"])
-
-  def next(self):
-    if self._queue is not None:
-      traj = self._queue.get()
-      return traj
-    self.rollout()
     return self._trajectory
 
   def _add_summary(self, info):
@@ -190,18 +175,3 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
       feed_dict = {self._policy.observations: self._trajectory["observations"]}
     self._summary_manager.add_summary(
         info, summaries=self._summaries, feed_dict=feed_dict)
-    if self._queue is not None:
-      summary = tf.Summary()
-      tag = "Trajectory/queue_fraction_of_{}_full".format(self._queue.maxsize)
-      frac = self._queue.qsize() / self._queue.maxsize
-      summary.value.add(tag=tag, simple_value=frac)
-      self._summary_manager.summary_writer.add_summary(
-          summary, self._summary_manager.step_value)
-
-  def _feed_queue(self):
-    assert self._queue is not None
-    with self._sess.graph.as_default():
-      while not self._sess.should_stop():
-        self._trajectory = copy.deepcopy(self._trajectory)
-        self.rollout()
-        self._queue.put(self._trajectory)
