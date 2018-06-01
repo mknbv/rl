@@ -109,11 +109,9 @@ class A3CAlgorithm(BaseAlgorithm):
       sess.run(self.sync_ops)
     trajectory = self._interactions_producer.next()
     advantages, value_targets = self._advantage_estimator(trajectory, sess=sess)
-    num_timesteps = trajectory["num_timesteps"]
     feed_dict = {
-        self.local_or_global_policy.observations:
-            trajectory["observations"][:num_timesteps],
-        self._actions: trajectory["actions"][:num_timesteps],
+        self.local_or_global_policy.observations: trajectory["observations"],
+        self._actions: trajectory["actions"],
         self._advantages: advantages,
         self._value_targets: value_targets
     }

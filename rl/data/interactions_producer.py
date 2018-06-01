@@ -1,8 +1,9 @@
 import abc
 
-from gym import spaces
 import numpy as np
 import tensorflow as tf
+
+from rl.utils.env_batch import EnvBatch, SingleEnvBatch
 
 
 class BaseInteractionsProducer(abc.ABC):
@@ -52,6 +53,11 @@ class BaseInteractionsProducer(abc.ABC):
 
 class OnlineInteractionsProducer(BaseInteractionsProducer):
   def __init__(self, env, policy, batch_size, cutoff=True, env_step=None):
+    if not isinstance(env, EnvBatch):
+      env = SingleEnvBatch(env)
+    if batch_size % env.num_envs != 0:
+      raise ValueError("env.num_envs = {} does not divide batch_size = {}"
+                       .format(env.num_envs, batch_size))
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
                                                      env_step=env_step)
     self._cutoff = cutoff
@@ -59,54 +65,61 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
   def start(self, session, summary_manager=None):
     super(OnlineInteractionsProducer, self).start(session, summary_manager)
 
-    latest_observation = self._env.reset()
-    obs_shape = (self._batch_size,) + latest_observation.shape
-    obs_type = latest_observation.dtype
-    if isinstance(self._env.action_space, spaces.Discrete):
-      act_shape = tuple()
-    else:
-      act_shape = self._env.action_space.shape
-    act_type = np.asarray(self.action_space.sample()).dtype
-    act_shape = (self._batch_size,) + act_shape
+    latest_observations = np.array(self._env.reset())
+    obs_shape = (self._batch_size,) + latest_observations.shape[1:]
+    obs_type = latest_observations.dtype
     self._trajectory = {
-        "latest_observation": latest_observation,
+        "latest_observations": latest_observations,
         "observations": np.empty(obs_shape, dtype=obs_type),
-        "actions": np.empty(act_shape, dtype=act_type),
         "rewards": np.empty(self._batch_size, dtype=np.float32),
         "resets": np.empty(self._batch_size, dtype=np.bool),
-        "critic_values": np.empty(self._batch_size, dtype=np.float32),
-        "num_timesteps": self._batch_size,
     }
-    if self._policy.state_values is not None:
-      self._trajectory["policy_state"] = self._policy.state_values
+    act = self._policy.act(latest_observations, sess=session)
+    for key, val in act.items():
+      val_batch_shape = (self._batch_size,) + val.shape[1:]
+      self._trajectory[key] = np.empty(val_batch_shape, val.dtype)
 
   def next(self):
-    traj = self._trajectory
-    observations = traj["observations"]
-    actions = traj["actions"]
-    rewards = traj["rewards"]
-    resets = traj["resets"]
-    critic_values = traj["critic_values"]
-    traj["num_timesteps"] = self._batch_size
-    if "policy_state" in traj:
-      traj["policy_state"] = self._policy.state_values
-    for i in range(self._batch_size):
-      observations[i] = self._trajectory["latest_observation"]
-      actions[i], critic_values[i] =\
-          self._policy.act(traj["latest_observation"], sess=self._sess)
-      traj["latest_observation"], rewards[i], resets[i], info =\
-          self._env.step(actions[i])
-      if resets[i]:
-        traj["latest_observation"] = self._env.reset()
-        self._policy.reset()
-        if self._summary_manager is not None:
-          env_step = self._session.run(self.env_step) + i
-          if self._summary_manager.summary_time(step=env_step):
-            self._summary_manager.add_summary_dict(
-                info.get("summaries", info), step=env_step)
+    observations = self._trajectory["observations"]
+    actions = self._trajectory["actions"]
+    self._trajectory["env_steps"] = self._batch_size
+    if "policy_state" in self._trajectory:
+      self._trajectory["policy_state"] = self._policy.state_values
+    n = self._env.num_envs
+
+    for i in range(0, self._batch_size, n):
+      batch_slice = slice(i, i + n)
+      observations[batch_slice] = self._trajectory["latest_observations"]
+      act = self._policy.act(self._trajectory["latest_observations"],
+                             sess=self._session)
+      for key, val in act.items():
+        self._trajectory[key][batch_slice] = val
+      obs, rews, resets, infos = self._env.step(actions[batch_slice])
+      self._trajectory["latest_observations"] = obs
+      self._trajectory["rewards"][batch_slice] = rews
+      self._trajectory["resets"][batch_slice] = resets
+
+      if np.any(resets):
+        self._policy.reset(resets)
+        if self.summary_manager is not None:
+          env_step = self._session.run(self.env_step) + i + n
+          if self.summary_manager.summary_time(env_step):
+            for info in np.asarray(infos)[resets]:
+              self.summary_manager.add_summary_dict(
+                  info.get("summaries", info), step=env_step)
+
         if self._cutoff:
-          traj["num_timesteps"] = i + 1
+          self._trajectory["env_steps"] = i + n
           break
 
-    self._update_env_step(traj["num_timesteps"])
-    return self._trajectory
+    self._update_env_step(self._trajectory["env_steps"])
+    if self._trajectory["env_steps"] == self._batch_size:
+      return self._trajectory
+    else:
+      traj = {}
+      for key, val in self._trajectory.items():
+        if key != "latest_observation" and isinstance(val, np.ndarray):
+          traj[key] = val[:self._trajectory["env_steps"]]
+        else:
+          traj[key] = val
+      return traj
