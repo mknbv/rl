@@ -181,7 +181,7 @@ class ExperienceReplay(BaseInteractionsProducer):
   def next(self):
     for i in range(self._nsteps):
       obs = self._latest_observation
-      action = self._policy.act(obs, sess=self._session)
+      action = self._policy.act(obs[None], sess=self._session)["actions"][0]
       self._latest_observation, reward, done, info = self._env.step(action)
       self._experience.put(obs, action, reward, done)
       if done:
