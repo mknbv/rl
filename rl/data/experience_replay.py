@@ -148,10 +148,8 @@ class ExperienceReplay(BaseInteractionsProducer):
     logging.info("Restoring experience from {}".format(fname))
     self._experience = Experience.fromfile(fname)
 
-  def start(self, summary_writer, summary_period, sess=None):
-    super(ExperienceReplay, self).start(summary_writer=summary_writer,
-                                        summary_period=summary_period,
-                                        sess=sess)
+  def start(self, sess, summary_manager=None):
+    super(ExperienceReplay, self).start(sess, summary_manager)
     self._latest_observation = self._env.reset()
     if self._experience is not None:
       # Experience was restored.
@@ -181,17 +179,18 @@ class ExperienceReplay(BaseInteractionsProducer):
         self._latest_observation = self._env.reset()
 
   def next(self):
-    for _ in range(self._nsteps):
+    for i in range(self._nsteps):
       obs = self._latest_observation
-      action = self._policy.act(obs, sess=self._sess)
+      action = self._policy.act(obs, sess=self._session)
       self._latest_observation, reward, done, info = self._env.step(action)
       self._experience.put(obs, action, reward, done)
       if done:
         self._latest_observation = self._env.reset()
-        if self._summary_manager.summary_time():
-          feed_dict = {self._policy.observations: obs[None, :]}
-          self._summary_manager.add_summary(
-              info, summaries=self._summaries, feed_dict=feed_dict)
+        if self._summary_manager is not None:
+          env_step = self._session.run(self.env_step) + i
+          if self._summary_manager.summary_time(step=env_step):
+            self._summary_manager.add_summary_dict(
+                info.get("summaries", info), step=env_step)
 
     sample = self._experience.sample(self._batch_size)
     self._update_env_step(self._nsteps)

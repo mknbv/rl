@@ -1,56 +1,8 @@
 import abc
-import logging
 
 from gym import spaces
 import numpy as np
 import tensorflow as tf
-
-
-__all__ = ["BaseInteractionsProducer", "OnlineInteractionsProducer"]
-
-
-class _InteractionSummaryManager(object):
-  def __init__(self, summary_writer, summary_period, step=None, sess=None):
-    self._summary_writer = summary_writer
-    self._summary_period = summary_period
-    self._step = step if step is not None else tf.train.get_global_step()
-    self._sess = sess or tf.get_default_session()
-    self._last_summary_step = self._sess.run(self._step) - self._summary_period
-
-  @property
-  def summary_writer(self):
-    return self._summary_writer
-
-  @property
-  def step(self):
-    return self._step
-
-  @property
-  def step_value(self):
-    return self._sess.run(self.step)
-
-  def summary_time(self):
-    return self._summary_period <= self.step_value - self._last_summary_step
-
-  def add_summary(self, info, summaries=None, feed_dict=None):
-    episode_counter = info.get("logging.episode_counter", None)
-    if episode_counter is not None and "logging.total_reward" in info:
-      logging.info("Episode #{} finished, reward: {}"
-                   .format(episode_counter, info["logging.total_reward"]))
-    if summaries is not None:
-      fetched_summaries = self._sess.run(summaries, feed_dict)
-      self.summary_writer.add_summary(fetched_summaries, self.step_value)
-    summary = tf.Summary()
-    logkeys = filter(
-        lambda k: k.startswith("logging") and k != "logging.episode_counter",
-        info.keys()
-    )
-    for key in logkeys:
-      val = float(info[key])
-      tag = "Trajectory/" + key.split(".", 1)[1]
-      summary.value.add(tag=tag, simple_value=val)
-    self._summary_writer.add_summary(summary, self.step_value)
-    self._last_summary_step = self.step_value
 
 
 class BaseInteractionsProducer(abc.ABC):
@@ -78,19 +30,20 @@ class BaseInteractionsProducer(abc.ABC):
   def env_step(self):
     return self._env_step
 
+  @property
+  def summary_manager(self):
+    return self._summary_manager
+
   @abc.abstractmethod
-  def start(self, summary_writer, summary_period, sess=None):
+  def start(self, session, summary_manager=None):
     if not self._policy.is_built:
       raise ValueError("Policy must be built before calling start")
-    self._sess = sess or tf.get_default_session()
-    self._summary_manager = _InteractionSummaryManager(
-        summary_writer=summary_writer,
-        summary_period=summary_period,
-        sess=self._sess)
+    self._session = session
+    self._summary_manager = summary_manager
 
   def _update_env_step(self, elapsed_steps):
-    return self._sess.run(self._updated_env_step,
-                          {self._elapsed_steps_ph: elapsed_steps})
+    return self._session.run(self._updated_env_step,
+                             {self._elapsed_steps_ph: elapsed_steps})
 
   @abc.abstractmethod
   def next(self):
@@ -102,21 +55,8 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
                                                      env_step=env_step)
 
-    if self._policy.metadata.get("visualize_observations", False):
-      # We cannot create tensor with this summary inside of `start` call,
-      # since at that time the `tf.Graph` might already be finilized.
-      def _set_summaries(built_policy, *args, **kwargs):
-        self._summaries = tf.summary.image("Trajectory/observation",
-                                           built_policy.observations)
-      self._policy.add_after_build_hook(_set_summaries)
-    else:
-      self._summaries = None
-
-  def start(self, summary_writer, summary_period=500, sess=None):
-    super(OnlineInteractionsProducer, self).start(
-        summary_writer=summary_writer,
-        summary_period=summary_period,
-        sess=sess)
+  def start(self, session, summary_manager=None):
+    super(OnlineInteractionsProducer, self).start(session, summary_manager)
 
     latest_observation = self._env.reset()
     obs_shape = (self._batch_size,) + latest_observation.shape
@@ -158,8 +98,11 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
       if resets[i]:
         traj["latest_observation"] = self._env.reset()
         self._policy.reset()
-        if self._summary_manager.summary_time():
-          self._add_summary(info)
+        if self._summary_manager is not None:
+          env_step = self._session.run(self.env_step) + i
+          if self._summary_manager.summary_time(step=env_step):
+            self._summary_manager.add_summary_dict(
+                info.get("summaries", info), step=env_step)
         # Recurrent policies require trajectory to end when episode ends.
         # Otherwise the batch may combine interactions from differen episodes.
         if self._policy.state_inputs is not None:
@@ -168,10 +111,3 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
 
     self._update_env_step(traj["num_timesteps"])
     return self._trajectory
-
-  def _add_summary(self, info):
-    feed_dict = None
-    if self._summaries is not None:
-      feed_dict = {self._policy.observations: self._trajectory["observations"]}
-    self._summary_manager.add_summary(
-        info, summaries=self._summaries, feed_dict=feed_dict)
