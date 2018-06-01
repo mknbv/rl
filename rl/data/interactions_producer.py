@@ -1,8 +1,6 @@
 import abc
-import collections
 import copy
 import logging
-import os
 import threading
 
 from gym import spaces
@@ -39,7 +37,7 @@ class _InteractionSummaryManager(object):
   def add_summary(self, info, summaries=None, feed_dict=None):
     episode_counter = info.get("logging.episode_counter", None)
     if episode_counter is not None and "logging.total_reward" in info:
-      logging.info("Episode #{} finished, reward: {}"\
+      logging.info("Episode #{} finished, reward: {}"
                    .format(episode_counter, info["logging.total_reward"]))
     if summaries is not None:
       fetched_summaries = self._sess.run(summaries, feed_dict)
@@ -58,10 +56,17 @@ class _InteractionSummaryManager(object):
 
 
 class BaseInteractionsProducer(abc.ABC):
-  def __init__(self, env, policy, batch_size):
+  def __init__(self, env, policy, batch_size, env_step=None):
     self._env = env
     self._policy = policy
     self._batch_size = batch_size
+    if env_step is None:
+      env_step = tf.train.get_or_create_global_step()
+    self._env_step = env_step
+    self._elapsed_steps_ph = tf.placeholder(self._env_step.dtype, [],
+                                            name="elapsed_steps")
+    self._updated_env_step = self._env_step.assign_add(self._elapsed_steps_ph)
+    self._summary_manager = None
 
   @property
   def observation_space(self):
@@ -70,6 +75,10 @@ class BaseInteractionsProducer(abc.ABC):
   @property
   def action_space(self):
     return self._env.action_space
+
+  @property
+  def env_step(self):
+    return self._env_step
 
   @abc.abstractmethod
   def start(self, summary_writer, summary_period, sess=None):
@@ -81,14 +90,19 @@ class BaseInteractionsProducer(abc.ABC):
         summary_period=summary_period,
         sess=self._sess)
 
+  def _update_env_step(self, elapsed_steps):
+    return self._sess.run(self._updated_env_step,
+                          {self._elapsed_steps_ph: elapsed_steps})
+
   @abc.abstractmethod
   def next(self):
     ...
 
 
 class OnlineInteractionsProducer(BaseInteractionsProducer):
-  def __init__(self, env, policy, batch_size, queue=None):
-    super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size)
+  def __init__(self, env, policy, batch_size, queue=None, env_step=None):
+    super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
+                                                     env_step=env_step)
     self._queue = queue
 
     if self._policy.metadata.get("visualize_observations", False):
@@ -100,7 +114,6 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
       self._policy.add_after_build_hook(_set_summaries)
     else:
       self._summaries = None
-
 
   def start(self, summary_writer, summary_period=500, sess=None):
     super(OnlineInteractionsProducer, self).start(
@@ -161,6 +174,8 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
         if self._policy.state_inputs is not None:
           traj["num_timesteps"] = i + 1
           break
+
+    self._update_env_step(traj["num_timesteps"])
 
   def next(self):
     if self._queue is not None:

@@ -1,6 +1,4 @@
-from collections import defaultdict, deque
 import logging
-import os
 import pickle
 
 from gym import spaces
@@ -22,7 +20,8 @@ class Experience(object):
                action_shape, action_type, size):
     self._size = size
     self._storage = {
-        "observations": np.empty((size,) + observation_shape, observation_type),
+        "observations": np.empty((size,) + observation_shape,
+                                 observation_type),
         "actions": np.empty((size,) + action_shape, action_type),
         "rewards": np.empty(size, np.float32),
         "resets": np.empty(size, np.bool),
@@ -78,7 +77,7 @@ class Experience(object):
     if self._index > 0:
       indices[indices >= self._index - 1] += 1
 
-    observations =  self._storage["observations"][indices]
+    observations = self._storage["observations"][indices]
     actions = self._storage["actions"][indices]
     rewards = self._storage["rewards"][indices]
     resets = self._storage["resets"][indices]
@@ -124,8 +123,10 @@ class ExperienceReplay(BaseInteractionsProducer):
                experience_size,
                experience_start_size,
                batch_size,
-               nsteps=4):
-    super(ExperienceReplay, self).__init__(env, policy, batch_size)
+               nsteps=4,
+               env_step=None):
+    super(ExperienceReplay, self).__init__(env, policy, batch_size,
+                                           env_step=env_step)
     self._experience = None
     self._experience_size = experience_size
     self._experience_start_size = experience_start_size
@@ -188,9 +189,10 @@ class ExperienceReplay(BaseInteractionsProducer):
       if done:
         self._latest_observation = self._env.reset()
         if self._summary_manager.summary_time():
-          feed_dict = {self._policy.observations: obs[None,:]}
+          feed_dict = {self._policy.observations: obs[None, :]}
           self._summary_manager.add_summary(
               info, summaries=self._summaries, feed_dict=feed_dict)
 
     sample = self._experience.sample(self._batch_size)
+    self._update_env_step(self._nsteps)
     return sample
