@@ -1,6 +1,38 @@
 import numpy as np
 
 
+class ActorCriticAdvantage(object):
+  def __init__(self, policy, gamma=0.99, normalize=False):
+    self._policy = policy
+    self._gamma = gamma
+    self._normalize = normalize
+
+  def __call__(self, trajectory, sess):
+    value_targets = np.zeros_like(trajectory["critic_values"])
+    num_envs = trajectory["latest_observations"].shape[0]
+    value_targets[-num_envs:] = trajectory["rewards"][-num_envs:]
+    obs = trajectory["latest_observations"]
+    last_value = sess.run(self._policy.critic_tensor,
+                          {self._policy.observations: obs})
+    value_targets[-num_envs:] += (
+        (1 - trajectory["resets"][-num_envs:]) * self._gamma * last_value)
+
+    for i in range(value_targets.shape[0] - num_envs, 0, -num_envs):
+      value_targets[i-num_envs:i] = (
+          trajectory["rewards"][i-num_envs:i]
+          + ((1 - trajectory["resets"][i-num_envs:i])
+             * self._gamma * value_targets[i:i+num_envs])
+      )
+
+    advantages = value_targets[:,0] - trajectory["critic_values"][:,0]
+    if self._normalize:
+      advantages = (
+          (advantages - advantages.mean())
+          / (advantages.std() + np.finfo(advantages.dtype).eps)
+      )
+    return advantages, value_targets
+
+
 class GAE(object):
   def __init__(self, policy, gamma=0.99, lambda_=0.95, normalize=False):
     self._policy = policy
