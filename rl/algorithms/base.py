@@ -73,11 +73,6 @@ class BaseAlgorithm(tfu.NetworkStructure):
     if len(ops) > 0:
       self._sync_ops = tf.group(*ops)
 
-  def start_training(self, sess, summary_writer, summary_period):
-    if self.sync_ops is not None:
-      sess.run(self.sync_ops)
-    self._start_training(sess, summary_writer, summary_period)
-
   def get_feed_dict(self, sess, summary_time=False):
     return self._get_feed_dict(sess, summary_time=summary_time)
 
@@ -131,9 +126,6 @@ class BaseAlgorithm(tfu.NetworkStructure):
                                           self._global_policy.var_list())
       ]
     return ops
-
-  def _start_training(self, sess, summary_writer, summary_period):
-    pass
 
   @abc.abstractmethod
   def _build_train_op(self):

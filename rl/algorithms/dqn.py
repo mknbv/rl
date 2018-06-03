@@ -92,13 +92,6 @@ class DQNAlgorithm(BaseAlgorithm):
     super(DQNAlgorithm, self)._build(*args, **kwargs)
     self.build_target_update_ops()
 
-  def _start_training(self, sess, summary_writer, summary_period):
-    self._experience_replay.start(
-        summary_writer=summary_writer,
-        summary_period=summary_period,
-        sess=sess
-    )
-
   def _get_feed_dict(self, sess, summary_time=False):
     step = sess.run(tf.train.get_global_step())
     if step > 0 and self._target_update_step is None:

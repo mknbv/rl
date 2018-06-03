@@ -101,9 +101,6 @@ class A3CAlgorithm(BaseAlgorithm):
       summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope=scope.name)
       return tf.summary.merge(summaries)
 
-  def _start_training(self, sess, summary_writer, summary_period):
-    self._interactions_producer.start(summary_writer, summary_period, sess=sess)
-
   def _get_feed_dict(self, sess, summary_time=False):
     if self.sync_ops is not None:
       sess.run(self.sync_ops)
