@@ -21,6 +21,7 @@ class BasePolicy(NetworkStructure):
 
   @abc.abstractmethod
   def __init__(self, name=None):
+    super(BasePolicy, self).__init__(name=name)
     self._observations = None
 
   @property

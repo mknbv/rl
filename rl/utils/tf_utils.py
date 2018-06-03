@@ -116,18 +116,13 @@ def scoped(func):
 
 class NetworkStructure(abc.ABC):
   """ Conceptually separate structure in tensorflow graph. """
-  def __new__(cls, *args, before_build_hooks=None, after_build_hooks=None,
-              name=None, **kwargs):
-    # We use __new__ since we want the env author to be able to
-    # override __init__ without remembering to call super.
-    network_structure = super(NetworkStructure, cls).__new__(cls)
-    network_structure._is_built = False
-    network_structure._name = name or cls.__name__
-    with tf.variable_scope(network_structure._name) as captured_scope:
-      network_structure._scope = captured_scope
-    network_structure._before_build_hooks = before_build_hooks or []
-    network_structure._after_build_hooks = after_build_hooks or []
-    return network_structure
+  def __init__(self, name=None):
+    self._is_built = False
+    self._name = name or self.__class__.__name__
+    with tf.variable_scope(self._name) as captured_scope:
+      self._scope = captured_scope
+    self._before_build_hooks = []
+    self._after_build_hooks = []
 
   @property
   def scope(self):

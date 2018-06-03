@@ -14,6 +14,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
         type(global_policy) is not type(local_policy):
       raise TypeError(
       "`global_policy` and `local_policy` must be of the same type")
+    super(BaseAlgorithm, self).__init__(name=name)
     self._global_policy = global_policy
     self._local_policy = local_policy
     self._loss = None
