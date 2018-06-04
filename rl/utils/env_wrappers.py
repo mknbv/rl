@@ -2,11 +2,10 @@ from collections import deque
 from datetime import datetime
 
 import cv2
-cv2.ocl.setUseOpenCL(False)
 import gym
-from gym.envs.atari import AtariEnv
 import gym.spaces as spaces
 import numpy as np
+cv2.ocl.setUseOpenCL(False)
 
 
 class ImageCropping(gym.ObservationWrapper):
@@ -107,6 +106,7 @@ class ImagePreprocessing(gym.ObservationWrapper):
 
 class UniverseStarter(gym.ObservationWrapper):
   def __init__(self, env, keepdims=True):
+    from gym.envs.atari import AtariEnv
     if not isinstance(env.unwrapped, AtariEnv):
       raise TypeError("env must be an AtariEnv")
     super(UniverseStarter, self).__init__(env)
@@ -133,10 +133,10 @@ class UniverseStarter(gym.ObservationWrapper):
 
 class MaxBetweenFrames(gym.ObservationWrapper):
   def __init__(self, env):
-    super(MaxBetweenFrames, self).__init__(env)
     if isinstance(env.unwrapped, gym.envs.atari.AtariEnv) and\
         "NoFrameskip" not in env.spec.id:
       raise TypeError("MaxBetweenFrames requires NoFrameskip in Atari env id")
+    super(MaxBetweenFrames, self).__init__(env)
     self._last_obs = None
 
   def step(self, action):
@@ -151,15 +151,22 @@ class MaxBetweenFrames(gym.ObservationWrapper):
 
 
 class QueueFrames(gym.ObservationWrapper):
-  def __init__(self, env, num_frames, lazy=False):
+  def __init__(self, env, num_frames, squeeze=False, lazy=False):
     super(QueueFrames, self).__init__(env)
     self._obs_queue = deque([], maxlen=num_frames)
-    obs_shape = self.observation_space.shape + (num_frames,)
-    self.observation_space.shape = obs_shape
+    self._squeeze = squeeze
     self._lazy = lazy
+    if self._squeeze:
+      obs_shape = tuple(filter(lambda dim: dim != 1,
+                               self.observation_space.shape)) + (num_frames,)
+    else:
+      obs_shape = self.observation_space.shape + (num_frames,)
+    self.observation_space.shape = obs_shape
 
   def step(self, action):
     obs, reward, done, info = self.env.step(action)
+    if self._squeeze:
+      obs = np.squeeze(obs)
     self._obs_queue.append(obs)
     if self._lazy:
       obs = LazyFrames(list(self._obs_queue))
@@ -216,15 +223,21 @@ class SkipFrames(gym.ObservationWrapper):
     return self.env.reset()
 
 
-class ClipReward(gym.RewardWrapper):
+class ClipReward(gym.Wrapper):
   def __init__(self, env):
     super(ClipReward, self).__init__(env)
 
-  def reward(self, reward):
-    return np.sign(reward)
+  def step(self, action):
+    ob, rew, done, info = self.env.step(action)
+    info["raw_reward"] = rew
+    rew = np.sign(rew)
+    return ob, rew, done, info
+
+  def reset(self):
+    return self.env.reset()
 
 
-class StartWithRandomActions(gym.Wrapper, gym.envs.atari.AtariEnv):
+class StartWithRandomActions(gym.Wrapper):
   def __init__(self, env, max_random_actions=30):
     super(StartWithRandomActions, self).__init__(env)
     self._max_random_actions = max_random_actions
@@ -248,29 +261,36 @@ class StartWithRandomActions(gym.Wrapper, gym.envs.atari.AtariEnv):
       return self.env.reset()
 
 
-class Logging(gym.Wrapper):
-  def __init__(self, env):
-    super(Logging, self).__init__(env)
+class SummariesInfo(gym.Wrapper):
+  def __init__(self, env, prefix=None):
+    super(SummariesInfo, self).__init__(env)
     self._episode_counter = 0
+    self._prefix = prefix or self.env.spec.id
 
   def step(self, action):
     if self.first_step:
       self.start_time = datetime.now()
       self.first_step = False
     obs, rew, done, info = self.env.step(action)
+    rew = info.get("raw_reward", rew)
     self.total_reward += rew
     self.episode_reward += rew
     self.episode_length += 1
-    info["logging.total_reward"] = self.total_reward
-    info["logging.trajectory_length"] = self.episode_length
+    if "summaries" not in info:
+      info["summaries"] = dict()
+
+    def add_summary(key, val):
+      info["summaries"]["{}/{}".format(self._prefix, key)] = val
+    add_summary("total_reward", self.total_reward)
+    add_summary("episode_length", self.episode_length)
+
     if done:
       delta_seconds = (datetime.now() - self.start_time).total_seconds()
       interactions_per_second = self.episode_length / delta_seconds
       self._episode_counter += 1
-      info["logging.episode_counter"] = self._episode_counter
-      info["logging.interactions_per_second"] = interactions_per_second
+      add_summary("interactions_per_second", interactions_per_second)
     if "real_done" in info and info["real_done"]:
-      info["logging.episode_reward"] = self.episode_reward
+      add_summary("episode_reward", self.episode_reward)
     return obs, rew, done, info
 
   def reset(self):
@@ -283,7 +303,7 @@ class Logging(gym.Wrapper):
     return self.env.reset()
 
 
-def nature_dqn_wrap(env, clip_reward=True):
+def nature_dqn_wrap(env, lazy=True, clip_reward=True):
   env = EpisodicLife(env)
   if "FIRE" in env.unwrapped.get_action_meanings():
     env = FireReset(env)
@@ -291,7 +311,7 @@ def nature_dqn_wrap(env, clip_reward=True):
   env = MaxBetweenFrames(env)
   env = SkipFrames(env, 4)
   env = ImagePreprocessing(env, (84, 84), grayscale=True)
-  env = QueueFrames(env, 4, lazy=True)
+  env = QueueFrames(env, 4, lazy=lazy)
   if clip_reward:
     env = ClipReward(env)
   return env
