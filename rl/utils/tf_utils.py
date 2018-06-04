@@ -1,4 +1,5 @@
 import abc
+from collections import defaultdict
 import contextlib
 import functools
 import logging
@@ -21,6 +22,23 @@ def lazy_function(function):
 def purge_orphaned_summaries(summary_writer, step):
   summary_writer.add_session_log(
     tf.SessionLog(status=tf.SessionLog.START), step)
+
+
+def read_events(event_filename, data=None, purge_orphaned=True):
+  data = data or defaultdict(dict)
+  for e in tf.train.summary_iterator(event_filename):
+    if purge_orphaned and e.session_log.status == tf.SessionLog.START:
+      for tag in data.keys():
+        data[tag] = {
+            step_time: val
+            for step_time, val in data[tag].items()
+            if step_time[0] < e.step
+        }
+
+    for v in e.summary.value:
+      data[v.tag][(e.step, e.wall_time)] = v.simple_value
+  return data
+
 
 def orthogonal_initializer(scale=1.0):
   # taken from https://github.com/openai/baselines/tree/master/baselines/ppo2
