@@ -4,15 +4,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
-from rl.utils import tf_utils as tfu
+from rl.utils.tf_utils import (NetworkStructure,
+                               orthogonal_initializer,
+                               torch_default_initializer)
 
-
-__all__ = [
-    "BasePolicy",
-    "MLPCore",
-    "DQNCore",
-    "UniverseStarterCore",
-]
 
 def _check_space_type(space_name, space, expected_type):
   if not isinstance(space, expected_type):
@@ -21,21 +16,17 @@ def _check_space_type(space_name, space, expected_type):
         .format(space_name, expected_type.__name__))
 
 
-class BasePolicy(tfu.NetworkStructure):
+class BasePolicy(NetworkStructure):
   metadata = {}
 
   @abc.abstractmethod
   def __init__(self, name=None):
+    super(BasePolicy, self).__init__(name=name)
     self._observations = None
-    self._layers = None
 
   @property
   def observations(self):
     return self._observations
-
-  @property
-  def layers(self):
-    return self._layerse
 
   @property
   def state_inputs(self):
@@ -45,7 +36,16 @@ class BasePolicy(tfu.NetworkStructure):
   def state_values(self):
     return None
 
-  def reset(self):
+  @classmethod
+  def global_and_local_instances(cls, *args, **kwargs):
+    name = kwargs.get("name", cls.__name__)
+    kwargs.update({"name": name + "_global"})
+    global_ = cls(*args, **kwargs)
+    kwargs.update({"name": name + "_local"})
+    local = cls(*args, **kwargs)
+    return global_, local
+
+  def reset(self, masks):
     pass
 
   @abc.abstractmethod
@@ -60,131 +60,115 @@ class BasePolicy(tfu.NetworkStructure):
     return grad_list
 
 
-class BaseCore(abc.ABC):
-  @property
-  def suggested_initializer(self):
-    return None
-
-  @abc.abstractmethod
-  def __call__(self):
-    ...
-
-
-class MLPCore(BaseCore):
-  def __init__(self, num_layers, units, activation=tf.nn.tanh):
-    self._num_layers = num_layers
-    self._units = units
-    self._activation = activation
+class PolicyCore(object):
+  def __init__(self, layers, kernel_initializer=None, bias_initializer=None):
+    self._layers = layers
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
 
   @property
-  def suggested_initializer(self):
-    return tfu.orthogonal_initializer(np.sqrt(2))
+  def layers(self):
+    return self._layers
 
-  def __call__(self):
+  @property
+  def kernel_initializer(self):
+    return self._kernel_initializer
+
+  @property
+  def bias_initializer(self):
+    return self._bias_initializer
+
+
+class MLPCore(PolicyCore):
+  def __init__(self, num_layers, units, activation=tf.nn.tanh,
+               kernel_initializer=orthogonal_initializer(np.sqrt(2)),
+               bias_initializer=tf.zeros_initializer()):
     layers = []
-    kernel_initializer = lambda scale: tfu.orthogonal_initializer(scale)
-    bias_initializer = tf.zeros_initializer()
-    for i in range(self._num_layers):
-      if isinstance(self._units, (list, tuple)):
-        layer_units = self._units[i]
+    for i in range(num_layers):
+      if isinstance(units, (list, tuple)):
+        layer_units = units[i]
       else:
-        layer_units = self._units
+        layer_units = units
       layers.append(
           tf.layers.Dense(
-            units=layer_units,
-            activation=self._activation,
-            kernel_initializer=kernel_initializer(np.sqrt(2)),
-            bias_initializer=bias_initializer,
-            name="dense_{}".format(i)
+              units=layer_units,
+              activation=activation,
+              kernel_initializer=kernel_initializer,
+              bias_initializer=bias_initializer,
+              name="dense_{}".format(i)
           )
       )
-    return layers
+      super(MLPCore, self).__init__(layers, kernel_initializer,
+                                    bias_initializer)
 
 
-def _nips_dqn_core():
-  return [
-      tf.layers.Conv2D(
-        filters=16,
-        kernel_size=8,
-        strides=4,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      ),
-      tf.layers.Conv2D(
-        filters=32,
-        kernel_size=4,
-        strides=2,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      ),
-      tf.layers.Flatten(),
-      tfl.layers.Dense(
-        units=256,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      )
-  ]
-
-def _nature_dqn_core():
-  return [
-      tf.layers.Conv2D(
-        filters=32,
-        kernel_size=8,
-        strides=4,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      ),
-      tf.layers.Conv2D(
-        filters=64,
-        kernel_size=4,
-        strides=2,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      ),
-      tf.layers.Conv2D(
-        filters=64,
-        kernel_size=3,
-        strides=1,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      ),
-      tf.layers.Flatten(),
-      tf.layers.Dense(
-        units=512,
-        activation=tf.nn.relu,
-        kernel_initializer=tfu.torch_default_initializer(),
-        bias_initializer=tfu.torch_default_initializer()
-      )
-  ]
-
-class DQNCore(BaseCore):
-  def __init__(self, kind):
-    if not kind in ["nature", "nips"]:
-      raise TypeError("kind must be one of ['nature', 'nips']")
-    self._kind = kind
-
-  @property
-  def suggested_initializer(self):
-    return tfu.torch_default_initializer()
-
-  def __call__(self):
-    if self._kind == "nips":
-      return _nips_dqn_core()
+def layer_sequence(class_params_sequence):
+  layers = []
+  for layer_class, params in class_params_sequence:
+    if len(params) == 0:
+      layers.append(layer_class())
     else:
-      return _nature_dqn_core()
+      values = list(params.values())
+      start_len = len(values[0])
+      for key, val in zip(params.keys(), values):
+        if len(val) != start_len:
+          raise ValueError("Layer {} parameter {} have different sizes: {}, {}"
+                           .format(layer_class, key, start_len, len(val)))
+      layers.extend(layer_class(**dict(zip(params.keys(), vals)))
+                    for vals in zip(*list(params.values())))
+  return layers
 
 
-class UniverseStarterCore(BaseCore):
+class NIPSDQNCore(PolicyCore):
+  def __init__(self, kernel_initializer=torch_default_initializer(),
+               bias_initializer=torch_default_initializer()):
+    layers = layer_sequence([
+        (tf.layers.Conv2D, {
+          "filters": [16, 32],
+          "kernel_size": [8, 4],
+          "strides": [4, 2],
+          "activation": [tf.nn.relu for _ in range(2)],
+          "kernel_initializer": kernel_initializer,
+          "bias_initializer": bias_initializer,
+        }),
+        (tf.layers.Flatten, {}),
+        (tf.layers.Dense, {
+            "units": [256],
+            "activation": [tf.nn.relu],
+            "kernel_initializer": [kernel_initializer],
+            "bias_initializer": [bias_initializer]
+        })
+    ])
+    super(NIPSDQNCore, self).__init__(layers, kernel_initializer,
+                                      bias_initializer)
+
+
+class NatureDQNCore(PolicyCore):
+  def __init__(self, kernel_initializer=torch_default_initializer(),
+               bias_initializer=torch_default_initializer()):
+    layers = layer_sequence([
+        (tf.layers.Conv2D, {
+          "filters": [32, 64, 64],
+          "kernel_size": [8, 4, 3],
+          "strides": [4, 2, 1],
+          "activation": [tf.nn.relu for _ in range(3)],
+          "kernel_initializer": [kernel_initializer for _ in range(3)],
+          "bias_initializer": [bias_initializer for _ in range(3)]
+        }),
+        (tf.layers.Flatten, {}),
+        (tf.layers.Dense, {
+            "units": [512],
+            "activation": [tf.nn.relu],
+            "kernel_initializer": [kernel_initializer],
+            "bias_initializer": [bias_initializer]
+        })
+    ])
+    super(NatureDQNCore, self).__init__(layers, kernel_initializer,
+                                        bias_initializer)
+
+
+class UniverseStarterCore(PolicyCore):
   def __init__(self, recurrent=True):
-    self._recurrent = recurrent
-
-  def __call__(self):
     layers = []
     for i in range(4):
       layers.append(
@@ -198,8 +182,8 @@ class UniverseStarterCore(BaseCore):
           )
       )
     layers.append(tf.layers.Flatten())
-    if self._recurrent:
+    if recurrent:
       layers.append(rnn.BasicLSTMCell(num_units=256))
     else:
       layers.append(tf.layers.Dense(units=256))
-    return layers
+    super(UniverseStarterCore, self).__init__(layers)

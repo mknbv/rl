@@ -9,12 +9,14 @@ import tensorflow as tf
 
 def lazy_function(function):
     attribute = '_cache_' + function.__name__
+
     @functools.wraps(function)
     def decorator(self):
         if not hasattr(self, attribute):
             setattr(self, attribute, function(self))
         return getattr(self, attribute)
     return decorator
+
 
 def purge_orphaned_summaries(summary_writer, step):
   summary_writer.add_session_log(
@@ -26,16 +28,17 @@ def orthogonal_initializer(scale=1.0):
     shape = tuple(shape)
     if len(shape) == 2:
       flat_shape = shape
-    elif len(shape) == 4: # assumes NHWC
+    elif len(shape) == 4:  # assumes NHWC
       flat_shape = (np.prod(shape[:-1]), shape[-1])
     else:
-      raise NotImplementedError()
+      raise NotImplementedError("Not supported shape: {}".format(shape))
     a = np.random.normal(0.0, 1.0, flat_shape)
     u, _, v = np.linalg.svd(a, full_matrices=False)
     q = u if u.shape == flat_shape else v
     q = q.reshape(shape)
     return (scale * q[:shape[0], :shape[1]]).astype(np.float32)
   return _initializer
+
 
 def normalized_columns_initializer(stddev=1.0):
   def _initializer(shape, dtype=None, partition_info=None):
@@ -77,6 +80,24 @@ def partial_restore(variables, checkpoint, session=None, scope=None):
     v.load(checkpoint_vars[v.name])
 
 
+def explained_variance(targets, predictions):
+  targets, predictions = tf.squeeze(targets), tf.squeeze(predictions)
+  tf.assert_rank_in(targets, [0, 1])
+  tf.assert_rank_in(predictions, [0, 1])
+  var_targets = tf.cond(
+      tf.equal(tf.rank(targets), 0),
+      lambda: tf.constant(0, dtype=tf.float32),
+      lambda: tf.nn.moments(targets, axes=[0])[1]
+  )
+  return tf.cond(
+      tf.equal(var_targets, 0),
+      lambda: tf.constant(np.nan),
+      lambda: (1
+               - tf.nn.moments(targets - predictions, axes=[0])[1]
+               / var_targets)
+  )
+
+
 def huber_loss(x, delta=1.0):
   with tf.variable_scope("huber_loss"):
     abs_x = tf.abs(x)
@@ -102,6 +123,7 @@ def variable_and_name_scopes(scope):
       tf.name_scope(scope.original_name_scope):
     yield restored
 
+
 def scoped(func):
   """ Decorator that adds variable and name scope for function of a class.
 
@@ -116,18 +138,13 @@ def scoped(func):
 
 class NetworkStructure(abc.ABC):
   """ Conceptually separate structure in tensorflow graph. """
-  def __new__(cls, *args, before_build_hooks=None, after_build_hooks=None,
-              name=None, **kwargs):
-    # We use __new__ since we want the env author to be able to
-    # override __init__ without remembering to call super.
-    network_structure = super(NetworkStructure, cls).__new__(cls)
-    network_structure._is_built = False
-    network_structure._name = name or cls.__name__
-    with tf.variable_scope(network_structure._name) as captured_scope:
-      network_structure._scope = captured_scope
-    network_structure._before_build_hooks = before_build_hooks or []
-    network_structure._after_build_hooks = after_build_hooks or []
-    return network_structure
+  def __init__(self, name=None):
+    self._is_built = False
+    self._name = name or self.__class__.__name__
+    with tf.variable_scope(self._name) as captured_scope:
+      self._scope = captured_scope
+    self._before_build_hooks = []
+    self._after_build_hooks = []
 
   @property
   def scope(self):
