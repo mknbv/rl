@@ -20,7 +20,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
     self._loss = None
     self._summaries = None
     self._train_op = None
-    self._sync_ops = None
+    self._sync_op = None
 
   @property
   def local_policy(self):
@@ -52,8 +52,8 @@ class BaseAlgorithm(tfu.NetworkStructure):
     return self._summaries
 
   @property
-  def sync_ops(self):
-    return self._sync_ops
+  def sync_op(self):
+    return self._sync_op
 
   @tfu.scoped
   def build_loss(self):
@@ -68,10 +68,8 @@ class BaseAlgorithm(tfu.NetworkStructure):
     self._summaries = self._build_summaries()
 
   @tfu.scoped
-  def build_sync_ops(self):
-    ops = self._build_sync_ops()
-    if len(ops) > 0:
-      self._sync_ops = tf.group(*ops)
+  def build_sync_op(self):
+    self._sync_op = self._build_sync_op()
 
   def get_feed_dict(self, sess, summary_time=False):
     return self._get_feed_dict(sess, summary_time=summary_time)
@@ -108,7 +106,7 @@ class BaseAlgorithm(tfu.NetworkStructure):
       self.build_loss()
       self.build_train_op(optimizer)
       self.build_summaries()
-      self.build_sync_ops()
+      self.build_sync_op()
 
   @abc.abstractmethod
   def _build_loss(self):
@@ -118,14 +116,14 @@ class BaseAlgorithm(tfu.NetworkStructure):
   def _build_summaries(self):
     ...
 
-  def _build_sync_ops(self):
-    ops = []
+  def _build_sync_op(self):
     if self.local_policy is not None:
-      ops = [
+      return tf.group(*[
           v1.assign(v2) for v1, v2 in zip(self._local_policy.var_list(),
                                           self._global_policy.var_list())
-      ]
-    return ops
+      ])
+    else:
+      return tf.no_op()
 
   @abc.abstractmethod
   def _build_train_op(self):

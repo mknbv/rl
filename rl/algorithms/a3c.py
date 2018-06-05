@@ -104,8 +104,7 @@ class A3CAlgorithm(BaseAlgorithm):
       return tf.summary.merge(summaries)
 
   def _get_feed_dict(self, sess, summary_time=False):
-    if self.sync_ops is not None:
-      sess.run(self.sync_ops)
+    sess.run(self.sync_ops)
     trajectory = self._interactions_producer.next()
     advantages, value_targets = self._advantage_estimator(trajectory,
                                                           sess=sess)
