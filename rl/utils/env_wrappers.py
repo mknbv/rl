@@ -262,38 +262,40 @@ class StartWithRandomActions(gym.Wrapper):
 
 
 class SummariesInfo(gym.Wrapper):
-  def __init__(self, env, prefix=None):
+  def __init__(self, env, prefix=None, running_mean_size=100):
     super(SummariesInfo, self).__init__(env)
     self._episode_counter = 0
     self._prefix = prefix or self.env.spec.id
+    self._reward_queue = deque([0], maxlen=running_mean_size + 1)
 
   def step(self, action):
     if self.first_step:
       self.start_time = datetime.now()
       self.first_step = False
     obs, rew, done, info = self.env.step(action)
-    rew = info.get("raw_reward", rew)
-    self.total_reward += rew
+    self._reward_queue[-1] += rew
     self.episode_length += 1
     if "summaries" not in info:
       info["summaries"] = dict()
 
     def add_summary(key, val):
       info["summaries"]["{}/{}".format(self._prefix, key)] = val
-    add_summary("total_reward", self.total_reward)
-    add_summary("episode_length", self.episode_length)
 
+    add_summary("total_reward", self._reward_queue[-1])
+    add_summary("episode_length", self.episode_length)
     if done:
       delta_seconds = (datetime.now() - self.start_time).total_seconds()
       interactions_per_second = self.episode_length / delta_seconds
       self._episode_counter += 1
       add_summary("interactions_per_second", interactions_per_second)
+      add_summary("reward_mean_{}".format(self._reward_queue.maxlen - 1),
+                  np.mean(self._reward_queue))
+      self._reward_queue.append(0)
     return obs, rew, done, info
 
   def reset(self):
     self.first_step = True
     self.start_time = None
-    self.total_reward = 0
     self.episode_length = 0
     self.interactions_per_second = 0
     return self.env.reset()
