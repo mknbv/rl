@@ -274,7 +274,6 @@ class SummariesInfo(gym.Wrapper):
     obs, rew, done, info = self.env.step(action)
     rew = info.get("raw_reward", rew)
     self.total_reward += rew
-    self.episode_reward += rew
     self.episode_length += 1
     if "summaries" not in info:
       info["summaries"] = dict()
@@ -289,15 +288,12 @@ class SummariesInfo(gym.Wrapper):
       interactions_per_second = self.episode_length / delta_seconds
       self._episode_counter += 1
       add_summary("interactions_per_second", interactions_per_second)
-    if "real_done" in info and info["real_done"]:
-      add_summary("episode_reward", self.episode_reward)
     return obs, rew, done, info
 
   def reset(self):
     self.first_step = True
     self.start_time = None
     self.total_reward = 0
-    self.episode_reward = 0
     self.episode_length = 0
     self.interactions_per_second = 0
     return self.env.reset()
