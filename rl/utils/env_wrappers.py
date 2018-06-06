@@ -278,19 +278,20 @@ class SummariesInfo(gym.Wrapper):
     if "summaries" not in info:
       info["summaries"] = dict()
 
-    def add_summary(key, val):
-      info["summaries"]["{}/{}".format(self._prefix, key)] = val
-
-    add_summary("total_reward", self._reward_queue[-1])
-    add_summary("episode_length", self.episode_length)
     if done:
       delta_seconds = (datetime.now() - self.start_time).total_seconds()
       interactions_per_second = self.episode_length / delta_seconds
-      self._episode_counter += 1
+
+      def add_summary(key, val):
+        info["summaries"]["{}/{}".format(self._prefix, key)] = val
+
+      add_summary("total_reward", self._reward_queue[-1])
+      add_summary("episode_length", self.episode_length)
       add_summary("interactions_per_second", interactions_per_second)
       add_summary("reward_mean_{}".format(self._reward_queue.maxlen - 1),
                   np.mean(self._reward_queue))
       self._reward_queue.append(0)
+      self._episode_counter += 1
     return obs, rew, done, info
 
   def reset(self):
