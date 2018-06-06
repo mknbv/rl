@@ -1,6 +1,6 @@
 from copy import copy
 from contextlib import contextmanager
-import logging
+from logging import getLogger
 
 import tensorflow as tf
 
@@ -8,6 +8,7 @@ from rl.utils.tf_utils import (purge_orphaned_summaries
                                as _purge_orphaned_summaries)
 
 USE_DEFAULT = object()
+logger = getLogger("rl")
 
 
 class SummaryManager(object):
@@ -187,7 +188,7 @@ class DistributedTrainer(object):
 
     values = sess.run(run_fetches, feed_dict)
     if summary_time:
-      logging.info("Step #{}, {}".format(step, values["logging"]))
+      logger.info("Step #{}, {}".format(step, values["logging"]))
       self._summary_manager.add_summary(values["summaries"], step=step)
 
     if "fetches" in values:

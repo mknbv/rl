@@ -1,4 +1,4 @@
-import logging
+from logging import getLogger
 
 import numpy as np
 import tensorflow as tf
@@ -8,6 +8,7 @@ from rl.utils.tf_utils import huber_loss, scoped
 
 
 __all__ = ["DQNAlgorithm"]
+logger = getLogger("rl")
 
 
 def slice_with_actions(tensor, actions):
@@ -99,7 +100,7 @@ class DQNAlgorithm(BaseAlgorithm):
       self._target_update_step = step - step % self._target_update_period
     if self._target_update_step is None or\
         step - self._target_update_step >= self._target_update_period:
-      logging.info("Updating target policy on step #{}".format(step))
+      logger.info("Updating target policy on step #{}".format(step))
       sess.run(self._target_update_ops)
       self._target_update_step = step
     experience = self._experience_replay.next()

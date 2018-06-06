@@ -1,4 +1,4 @@
-import logging
+from logging import getLogger
 import pickle
 
 from gym import spaces
@@ -6,6 +6,8 @@ import numpy as np
 import tensorflow as tf
 
 from .interactions_producer import BaseInteractionsProducer
+
+logger = getLogger("rl")
 
 
 def _observations_to_array(observations):
@@ -39,14 +41,14 @@ class Experience(object):
 
   @classmethod
   def fromfile(cls, filename):
-    logging.info("Loading experience from {}".format(filename))
+    logger.info("Loading experience from {}".format(filename))
     with open(filename, "rb") as picklefile:
       return pickle.load(picklefile)
 
   def save(self, filename):
-    logging.info("Saving experience to {}".format(filename))
+    logger.info("Saving experience to {}".format(filename))
     if not self._storage["resets"][self._index-1]:
-      logging.warning(
+      logger.warning(
           "Saving experience when latest observation is not at the"
           " end of an episode. This might lead to difficulties when continuing"
           " trainnig from restored experience."
@@ -145,7 +147,7 @@ class ExperienceReplay(BaseInteractionsProducer):
     return self._experience
 
   def restore_experience(self, fname):
-    logging.info("Restoring experience from {}".format(fname))
+    logger.info("Restoring experience from {}".format(fname))
     self._experience = Experience.fromfile(fname)
 
   def start(self, sess, summary_manager=None):

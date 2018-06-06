@@ -2,10 +2,12 @@ import abc
 from collections import defaultdict
 import contextlib
 import functools
-import logging
+from logging import getLogger
 
 import numpy as np
 import tensorflow as tf
+
+logger = getLogger("rl")
 
 
 def lazy_function(function):
@@ -181,7 +183,7 @@ class NetworkStructure(abc.ABC):
   @scoped
   def build(self, *args, **kwargs):
     if not self.is_built:
-      logging.info("Building {}".format(self._name))
+      logger.info("Building {}".format(self._name))
       for hook in self._before_build_hooks:
         hook(self, *args, **kwargs)
       self._build(*args, **kwargs)
