@@ -20,6 +20,10 @@ class BaseInteractionsProducer(abc.ABC):
     self._summary_manager = None
 
   @property
+  def batch_size(self):
+    return self._batch_size
+
+  @property
   def observation_space(self):
     return self._env.observation_space
 
@@ -61,6 +65,10 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
     super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
                                                      env_step=env_step)
     self._cutoff = cutoff
+
+  @property
+  def num_envs(self):
+    return self._env.num_envs
 
   def start(self, session, summary_manager=None):
     super(OnlineInteractionsProducer, self).start(session, summary_manager)
