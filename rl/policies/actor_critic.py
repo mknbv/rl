@@ -193,22 +193,32 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     )
 
   def _apply_recurrent_layer(self, x, layer):
-    if isinstance(self._observation_space, SpaceBatch):
-      batch_size = len(self._observation_space.spaces)
-      x = tf.reshape(x, (batch_size, -1) + x.shape[1:])
-    else:
-      batch_size = 1
-      x = tf.expand_dims(x, [0])
-    step_size = tf.shape(x)[1:2]
     self._state_inputs = rnn.LSTMStateTuple(
-        c=tf.placeholder(tf.float32, [batch_size, layer.state_size.c]),
-        h=tf.placeholder(tf.float32, [batch_size, layer.state_size.h]))
+        c=tf.placeholder(tf.float32, [None, layer.state_size.c],
+                         name="lstm_c"),
+        h=tf.placeholder(tf.float32, [None, layer.state_size.h],
+                         name="lstm_h"))
+    batch_size = tf.shape(self._state_inputs.c)[0]
+    tf.assert_equal(tf.shape(self._state_inputs.h)[0], batch_size)
+
+    x = tf.reshape(x, (batch_size, -1) + tuple(x.shape[1:]))
+    step_size = tf.shape(x)[1]
+
+    if isinstance(self._observation_space, SpaceBatch):
+      num_envs = len(self._observation_space.spaces)
+    else:
+      num_envs = 1
     self._initial_state_values = rnn.LSTMStateTuple(
-        c=np.zeros(self._state_inputs.c.shape.as_list()),
-        h=np.zeros(self._state_inputs.c.shape.as_list()))
+        c=np.zeros([num_envs, layer.state_size.c],
+                   dtype=np.float32),
+        h=np.zeros([num_envs, layer.state_size.h],
+                   dtype=np.float32))
     self._state_values = self._initial_state_values
+
+    sequence_length = tf.fill([batch_size], step_size)
     layer_outputs, self._state_outputs = tf.nn.dynamic_rnn(
-        layer, x, initial_state=self._state_inputs, sequence_length=step_size,
+        layer, x, initial_state=self._state_inputs,
+        sequence_length=sequence_length,
         time_major=False)
     x = tf.reshape(layer_outputs, [-1, layer.output_size])
     return x
@@ -222,10 +232,14 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     return self._state_values
 
   def reset(self, mask):
-    if not np.all(mask):
-      raise NotImplementedError()
     if self._recurrent:
-      self._state_values = self._initial_state_values
+      self._state_values = rnn.LSTMStateTuple(
+          c=np.where(mask[:, None],
+                     self._initial_state_values.c,
+                     self.state_values.c),
+          h=np.where(mask[:, None],
+                     self._initial_state_values.h,
+                     self.state_values.h))
 
   def act(self, observations, sess=None):
     sess = sess or tf.get_default_session()
