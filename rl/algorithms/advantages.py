@@ -13,7 +13,7 @@ class ActorCriticAdvantage(object):
     value_targets[-num_envs:] = trajectory["rewards"][-num_envs:]
     obs = trajectory["latest_observations"]
     last_value = sess.run(self._policy.critic_tensor,
-                          {self._policy.observations: obs})
+                          {self._policy.observations: obs})[:,0]
     value_targets[-num_envs:] += (
         (1 - trajectory["resets"][-num_envs:]) * self._gamma * last_value)
 
