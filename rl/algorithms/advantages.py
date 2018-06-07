@@ -9,9 +9,9 @@ class ActorCriticAdvantage(object):
 
   def __call__(self, trajectory, sess):
     value_targets = np.zeros_like(trajectory["critic_values"])
-    num_envs = trajectory["latest_observations"].shape[0]
+    num_envs = trajectory["state"]["latest_observations"].shape[0]
     value_targets[-num_envs:] = trajectory["rewards"][-num_envs:]
-    obs = trajectory["latest_observations"]
+    obs = trajectory["state"]["latest_observations"]
     feed_dict = {self._policy.observations: obs}
     if self._policy.state_inputs is not None:
       feed_dict[self._policy.state_inputs] = self._policy.state_values
@@ -43,13 +43,13 @@ class GAE(object):
     self._normalize = normalize
 
   def __call__(self, trajectory, sess=None):
-    gae = np.zeros(trajectory["env_steps"], dtype=np.float32)
-    num_envs = trajectory["latest_observations"].shape[0]
+    gae = np.zeros(trajectory["state"]["env_steps"], dtype=np.float32)
+    num_envs = trajectory["state"]["latest_observations"].shape[0]
     gae[-num_envs:] = (
         trajectory["rewards"][-num_envs:]
         - trajectory["critic_values"][-num_envs:,0]
     )
-    obs = trajectory["latest_observations"]
+    obs = trajectory["state"]["latest_observations"]
     feed_dict = {self._policy.observations: obs}
     if self._policy.state_inputs is not None:
       feed_dict[self._policy.state_inputs] = self._policy.state_values

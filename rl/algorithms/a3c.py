@@ -114,7 +114,7 @@ class A3CAlgorithm(BaseAlgorithm):
         self._advantages: advantages,
         self._value_targets: value_targets
     }
-    if self.local_or_global_policy.state_inputs is not None:
-      feed_dict[self.local_or_global_policy.state_inputs] =\
-          trajectory["policy_state"]
+    policy = self.local_or_global_policy
+    if policy.state_inputs is not None:
+      feed_dict[policy.state_inputs] = trajectory["state"][policy.state_inputs]
     return feed_dict
