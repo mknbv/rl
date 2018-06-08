@@ -64,6 +64,9 @@ class SummaryManager(object):
     self.add_summary(summary, step=step, session=session,
                      update_last_summary_step=update_last_summary_step)
 
+  def update_last_summary_step(self, step, session=None):
+    self._last_summary_step = self._get_step(step, session)
+
 
 class DistributedTrainer(object):
   def __init__(self,
