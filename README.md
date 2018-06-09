@@ -7,3 +7,18 @@ Currently implemented algorithms:
 * [PPO](https://arxiv.org/abs/1707.06347) for recurrent and feed-forward networks
 
 To view some of the result head over to the [wiki](https://github.com/MichaelKonobeev/rl/wiki) page.
+
+
+### Installation
+
+* Install tensorflow or tensorflow-gpu (version >= 1.7.0). [Tensorflow installation instructions](https://www.tensorflow.org/install/).
+
+* Clone the repository:
+```
+git clone https://github.com/MichaelKonobeev/rl.git
+```
+
+* `cd` into the package and install it:
+```
+cd rl && pip install -e .
+```
