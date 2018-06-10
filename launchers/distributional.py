@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import pickle
 
@@ -8,8 +7,6 @@ import numpy as np
 import rl
 import tensorflow as tf
 from tqdm import trange
-
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
 
 def get_train_args(arg_list=None):
@@ -47,7 +44,7 @@ def evaluate(env_id, policy, summary_writer, seeds=[0], epsilon=1e-3,
     step = sess.run(tf.train.get_global_step())
   summary = tf.Summary()
 
-  logging.info("Evaluation starts, step #{}".format(step))
+  rl.logger.info("Evaluation starts, step #{}".format(step))
   env = gym.make(env_id)
   env = rl.env_wrappers.nature_dqn_wrap(env, clip_reward=False)
   for seed in seeds:
@@ -56,7 +53,8 @@ def evaluate(env_id, policy, summary_writer, seeds=[0], epsilon=1e-3,
     rewards = [0]
     episode_lengths = [0]
     for i in trange(0, nframes, 4):
-      action = policy.act(obs, epsilon_value=epsilon, sess=sess)
+      action = policy.act(obs[None], epsilon_value=epsilon,
+                          sess=sess)["actions"][0]
       obs, rew, done, info = env.step(action)
       rewards[-1] += rew
       episode_lengths[-1] += 1
@@ -72,7 +70,7 @@ def evaluate(env_id, policy, summary_writer, seeds=[0], epsilon=1e-3,
     rewards = rewards[:-1]
     episode_lengths = episode_lengths[:-1]
 
-  logging.info("Evaluation finished, step #{}, mean reward: {}"
+  rl.logger.info("Evaluation finished, step #{}, mean reward: {}"
                .format(step, np.mean(rewards)))
   summary.value.add(tag="Evaluation/reward_mean", simple_value=np.mean(rewards))
   summary.value.add(tag="Evaluation/reward_median",
@@ -92,8 +90,8 @@ def train(env_id, arg_list=None):
   args = get_train_args(arg_list)
 
   env = gym.make(env_id)
+  env = rl.env_wrappers.SummariesInfo(env)
   env = rl.env_wrappers.nature_dqn_wrap(env)
-  env = rl.env_wrappers.Logging(env)
   env.seed(args.train_seed)
   global_step = tf.train.create_global_step()
   epsilon = tf.train.polynomial_decay(
@@ -105,10 +103,9 @@ def train(env_id, arg_list=None):
   )
 
   policy = rl.policies.DistributionalPolicy(
-      env.observation_space.shape,
-      np.uint8,
+      env.observation_space,
       env.action_space,
-      core=rl.policies.DQNCore(kind="nature"),
+      core=rl.policies.NatureDQNCore(),
       epsilon=epsilon,
       nbins=1 if args.kind == "dqn" else 200,
       ubyte_rescale=True
@@ -137,9 +134,10 @@ def train(env_id, arg_list=None):
         kind=args.kind
     )
 
-  trainer = rl.trainers.SingularTrainer(
-      logdir=args.logdir,
-      summary_period=args.summary_period,
+  summary_manager = rl.training.SummaryManager(
+      logdir=args.logdir, summary_period=args.summary_period)
+  trainer = rl.training.SingularTrainer(
+      summary_manager=summary_manager,
       checkpoint_period=int(1e6),
       checkpoint=args.checkpoint
   )
@@ -168,16 +166,11 @@ def train(env_id, arg_list=None):
   running_model_saver = tf.train.Saver(max_to_keep=None)
 
   with trainer.managed_session(hooks=None) as sess:
-    experience_replay.start(
-        summary_writer=trainer.summary_writer,
-        summary_period=args.summary_period,
-        sess=sess
-    )
+    experience_replay.start(sess, summary_manager.copy())
 
     step = sess.run(global_step)
     last_checkpoint_step = None if step == 0 else step - step % int(1e6)
     last_evaluation_step = None if step == 0 else step - step % int(1e6)
-    rl.tf_utils.purge_orphaned_summaries(trainer.summary_writer, step)
     while not sess.should_stop() and step <= int(200 * 1e6):
       step, _ = trainer.step(algorithm=algorithm, fetches=[inc_step])
       if (last_checkpoint_step is None\
@@ -192,7 +185,7 @@ def train(env_id, arg_list=None):
       if last_evaluation_step is None\
           or step - last_evaluation_step >= int(1e6):
         mean_policy_reward = np.mean(
-            evaluate(env.spec.id, policy, trainer.summary_writer,
+            evaluate(env.spec.id, policy, summary_manager.summary_writer,
                      step=step, sess=sess)
         )
         if mean_policy_reward > best_reward.eval(sess):
@@ -227,8 +220,7 @@ def perform(env_id, arg_list=None):
   env = rl.env_wrappers.nature_dqn_wrap(env, clip_reward=False)
 
   policy = rl.policies.DistributionalPolicy(
-      env.observation_space.shape,
-      np.uint8,
+      env.observation_space,
       env.action_space,
       core=rl.policies.DQNCore(kind="nature"),
       epsilon=tf.constant(args.epsilon),
