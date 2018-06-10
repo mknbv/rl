@@ -57,15 +57,14 @@ class ValueBasedPolicy(BasePolicy):
 class DistributionalPolicy(ValueBasedPolicy):
   metadata = {"visualize_observations": True}
 
-  def __init__(self, observation_shape, observation_type, action_space,
+  def __init__(self, observation_space, action_space,
                core, epsilon, nbins=200, ubyte_rescale=True,
                is_target=False, target=None, name=None):
     kwargs = locals()
     kwargs.pop("self")
     kwargs.pop("__class__")
     super(DistributionalPolicy, self).__init__(**kwargs)
-    self._observation_shape = observation_shape
-    self._observation_type = observation_type
+    self._observation_space = observation_space
     self._nbins = nbins
     self._ubyte_rescale = ubyte_rescale
     self._core = core
