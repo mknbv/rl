@@ -64,6 +64,9 @@ class SummaryManager(object):
     self.add_summary(summary, step=step, session=session,
                      update_last_summary_step=update_last_summary_step)
 
+  def update_last_summary_step(self, step, session=None):
+    self._last_summary_step = self._get_step(step, session)
+
 
 class DistributedTrainer(object):
   def __init__(self,
@@ -152,7 +155,9 @@ class DistributedTrainer(object):
   def step(self, algorithm=None, fetches=None,
            feed_dict=None, summary_time=None, sess=None):
     if summary_time and algorithm is None:
-      raise TypeError("Algorithm cannot be None when summary_time is True")
+      raise ValueError("algorithm cannot be None when summary_time is True")
+    if algorithm is None and fetches is None:
+      raise ValueError("algorithm and fetches cannot both be None")
 
     if sess is None:
       sess = self._session or tf.get_default_session()
@@ -176,8 +181,13 @@ class DistributedTrainer(object):
 
     if feed_dict is None:
       feed_dict = {}
-    algorithm_feed_dict = algorithm.get_feed_dict(sess,
-                                                  summary_time=summary_time)
+
+    if algorithm is not None:
+      algorithm_feed_dict = algorithm.get_feed_dict(
+          sess, summary_time=summary_time)
+    else:
+      algorithm_feed_dict = {}
+
     if len(algorithm_feed_dict.keys() & feed_dict.keys()) > 0:
       intersection = algorithm_feed_dict.keys() & feed_dict.keys()
       raise ValueError(

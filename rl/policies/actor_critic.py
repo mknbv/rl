@@ -19,6 +19,7 @@ class ActorCriticPolicy(BasePolicy):
     super(ActorCriticPolicy, self).__init__(name=name)
     self._distribution = None
     self._sample = None
+    self._log_prob = None
     self._critic_tensor = None
 
   @property
@@ -35,6 +36,8 @@ class ActorCriticPolicy(BasePolicy):
         "actions": self._sample,
         "critic_values": self.critic_tensor
     }
+    if self._log_prob is not None:
+      fetches["log_probs"] = self._log_prob
     return sess.run(fetches, {self.observations: observations})
 
 
@@ -46,6 +49,7 @@ class MLPPolicy(ActorCriticPolicy):
                num_layers=3,
                units=64,
                clipping_param=10,
+               compute_log_prob=False,
                joint=False,
                name=None):
     super(MLPPolicy, self).__init__(name=name)
@@ -57,6 +61,7 @@ class MLPPolicy(ActorCriticPolicy):
     self._num_layers = num_layers
     self._units = units
     self._clipping_param = clipping_param
+    self._compute_log_prob = compute_log_prob
     self._joint = joint
     # _create_distribution will add the last hidden layer.
     self._policy_core = MLPCore(num_layers=num_layers-1, units=units)
@@ -84,6 +89,8 @@ class MLPPolicy(ActorCriticPolicy):
     self._distribution = self._distribution_creator.create_distribution(
         pi, self._action_space)
     self._sample = self._distribution.sample()
+    if self._compute_log_prob:
+      self._log_prob = self.distribution.log_prob(self._sample)
     self._critic_tensor = tf.layers.dense(
       critic,
       units=1,
@@ -102,11 +109,14 @@ class CategoricalActorCriticPolicy(ActorCriticPolicy):
   metadata = {"visualize_observations": True}
 
   def __init__(self, observation_space, action_space, core,
-               ubyte_rescale=True, name=None):
+               ubyte_rescale=True,
+               compute_log_prob=False,
+               name=None):
     super(CategoricalActorCriticPolicy, self).__init__(name=name)
     self._observation_space = observation_space
     self._action_space = action_space
     self._core = core
+    self._compute_log_prob = compute_log_prob
     self._ubyte_rescale = ubyte_rescale
 
   def _build(self):
@@ -129,6 +139,8 @@ class CategoricalActorCriticPolicy(ActorCriticPolicy):
         name="logits")
     self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
+    if self._compute_log_prob:
+      self._log_prob = self.distribution.log_prob(self._sample)
     self._critic_tensor = tf.layers.dense(
         x,
         units=1,
@@ -141,7 +153,7 @@ class UniverseStarterPolicy(ActorCriticPolicy):
   metadata = {"visualize_observations": True}
 
   def __init__(self, observation_space, action_space,
-               recurrent=True, name=None):
+               recurrent=True, compute_log_prob=False, name=None):
     super(UniverseStarterPolicy, self).__init__(name=name)
     self._state_inputs = None
     self._state_values = None
@@ -149,6 +161,7 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     self._observation_space = observation_space
     self._action_space = action_space
     self._recurrent = recurrent
+    self._compute_log_prob = compute_log_prob
     self._core = UniverseStarterCore(recurrent=recurrent)
 
   def _build(self):
@@ -170,6 +183,8 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     )
     self._distribution = tf.distributions.Categorical(logits=self._logits)
     self._sample = self._distribution.sample()
+    if self._compute_log_prob:
+      self._log_prob = self._distribution.log_prob(self._sample)
     self._critic_tensor = tf.layers.dense(
         x,
         units=1,
@@ -178,22 +193,32 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     )
 
   def _apply_recurrent_layer(self, x, layer):
-    if isinstance(self._observation_space, SpaceBatch):
-      batch_size = len(self._observation_space.spaces)
-      x = tf.reshape(x, (batch_size, -1) + x.shape[1:])
-    else:
-      batch_size = 1
-      x = tf.expand_dims(x, [0])
-    step_size = tf.shape(x)[1:2]
     self._state_inputs = rnn.LSTMStateTuple(
-        c=tf.placeholder(tf.float32, [batch_size, layer.state_size.c]),
-        h=tf.placeholder(tf.float32, [batch_size, layer.state_size.h]))
+        c=tf.placeholder(tf.float32, [None, layer.state_size.c],
+                         name="lstm_c"),
+        h=tf.placeholder(tf.float32, [None, layer.state_size.h],
+                         name="lstm_h"))
+    batch_size = tf.shape(self._state_inputs.c)[0]
+    tf.assert_equal(tf.shape(self._state_inputs.h)[0], batch_size)
+
+    x = tf.reshape(x, (batch_size, -1) + tuple(x.shape[1:]))
+    step_size = tf.shape(x)[1]
+
+    if isinstance(self._observation_space, SpaceBatch):
+      num_envs = len(self._observation_space.spaces)
+    else:
+      num_envs = 1
     self._initial_state_values = rnn.LSTMStateTuple(
-        c=np.zeros(self._state_inputs.c.shape.as_list()),
-        h=np.zeros(self._state_inputs.c.shape.as_list()))
+        c=np.zeros([num_envs, layer.state_size.c],
+                   dtype=np.float32),
+        h=np.zeros([num_envs, layer.state_size.h],
+                   dtype=np.float32))
     self._state_values = self._initial_state_values
+
+    sequence_length = tf.fill([batch_size], step_size)
     layer_outputs, self._state_outputs = tf.nn.dynamic_rnn(
-        layer, x, initial_state=self._state_inputs, sequence_length=step_size,
+        layer, x, initial_state=self._state_inputs,
+        sequence_length=sequence_length,
         time_major=False)
     x = tf.reshape(layer_outputs, [-1, layer.output_size])
     return x
@@ -207,25 +232,30 @@ class UniverseStarterPolicy(ActorCriticPolicy):
     return self._state_values
 
   def reset(self, mask):
-    if not np.all(mask):
-      raise NotImplementedError()
     if self._recurrent:
-      self._state_values = self._initial_state_values
+      self._state_values = rnn.LSTMStateTuple(
+          c=np.where(mask[:, None],
+                     self._initial_state_values.c,
+                     self.state_values.c),
+          h=np.where(mask[:, None],
+                     self._initial_state_values.h,
+                     self.state_values.h))
 
   def act(self, observations, sess=None):
     sess = sess or tf.get_default_session()
-    fetches = [self._sample, self.critic_tensor]
+    fetches = {"actions": self._sample, "critic_values": self._critic_tensor}
+    if self._log_prob is not None:
+      fetches["log_probs"] = self._log_prob
     feed_dict = {self.observations: observations}
     if self._recurrent:
-      fetches.append(self._state_outputs)
+      fetches["state_values"] = self._state_outputs
       feed_dict[self.state_inputs] = self.state_values
-      actions, critic_values, self._state_values = sess.run(fetches, feed_dict)
+      values = sess.run(fetches, feed_dict)
+      self._state_values = values["state_values"]
+      values.pop("state_values")
     else:
-      actions, critic_values = sess.run(fetches, feed_dict)
-    return {
-        "actions": actions,
-        "critic_values": critic_values
-    }
+      values = sess.run(fetches, feed_dict)
+    return values
 
   def preprocess_gradients(self, grad_list):
     if self._recurrent:
