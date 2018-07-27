@@ -55,8 +55,6 @@ class ValueBasedPolicy(BasePolicy):
 
 
 class DistributionalPolicy(ValueBasedPolicy):
-  metadata = {"visualize_observations": True}
-
   def __init__(self, observation_space, action_space,
                core, epsilon, nbins=200, ubyte_rescale=True,
                is_target=False, target=None, name=None):

@@ -106,8 +106,6 @@ class MLPPolicy(ActorCriticPolicy):
 
 
 class CategoricalActorCriticPolicy(ActorCriticPolicy):
-  metadata = {"visualize_observations": True}
-
   def __init__(self, observation_space, action_space, core,
                ubyte_rescale=True,
                compute_log_prob=False,
@@ -150,8 +148,6 @@ class CategoricalActorCriticPolicy(ActorCriticPolicy):
 
 
 class UniverseStarterPolicy(ActorCriticPolicy):
-  metadata = {"visualize_observations": True}
-
   def __init__(self, observation_space, action_space,
                recurrent=True, compute_log_prob=False, name=None):
     super(UniverseStarterPolicy, self).__init__(name=name)

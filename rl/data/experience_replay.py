@@ -134,13 +134,6 @@ class ExperienceReplay(BaseInteractionsProducer):
     self._experience_start_size = experience_start_size
     self._last_checkpoint_step = None
     self._nsteps = nsteps
-    if policy.metadata.get("visualize_observations", False):
-      def _set_summaries(built_policy, *args, **kwargs):
-        self._summaries = tf.summary.image("Trajectory/observation",
-                                           built_policy.observations)
-      self._policy.add_after_build_hook(_set_summaries)
-    else:
-      self._summaries = None
 
   @property
   def experience(self):

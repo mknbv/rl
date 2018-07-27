@@ -17,8 +17,6 @@ def _check_space_type(space_name, space, expected_type):
 
 
 class BasePolicy(NetworkStructure):
-  metadata = {}
-
   @abc.abstractmethod
   def __init__(self, name=None):
     super(BasePolicy, self).__init__(name=name)
