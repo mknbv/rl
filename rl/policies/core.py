@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 
-from rl.utils.tf_utils import (NetworkStructure,
+from rl.utils.tf_utils import (BuildInterface,
                                orthogonal_initializer,
                                torch_default_initializer)
 
@@ -16,7 +16,7 @@ def _check_space_type(space_name, space, expected_type):
         .format(space_name, expected_type.__name__))
 
 
-class BasePolicy(NetworkStructure):
+class BasePolicy(BuildInterface):
   @abc.abstractmethod
   def __init__(self, name=None):
     super(BasePolicy, self).__init__(name=name)

@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from rl.algorithms.dqn import DQNAlgorithm, slice_with_actions
-from rl.utils.tf_utils import huber_loss, scoped
+from rl.utils.tf_utils import huber_loss
 
 
 class DistributionalAlgorithm(DQNAlgorithm):

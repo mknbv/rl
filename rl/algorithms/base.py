@@ -2,13 +2,13 @@ import abc
 
 import tensorflow as tf
 
-import rl.utils.tf_utils as tfu
+from rl.utils.tf_utils import BuildInterface
 
 
 __all__ = ["BaseAlgorithm"]
 
 
-class BaseAlgorithm(tfu.NetworkStructure):
+class BaseAlgorithm(BuildInterface):
   def __init__(self, global_policy, local_policy, name=None):
     if local_policy is not None and\
         type(global_policy) is not type(local_policy):
@@ -55,19 +55,15 @@ class BaseAlgorithm(tfu.NetworkStructure):
   def sync_op(self):
     return self._sync_op
 
-  @tfu.scoped
   def build_loss(self):
     self._loss = self._build_loss()
 
-  @tfu.scoped
   def build_train_op(self, optimizer):
     self._train_op = self._build_train_op(optimizer)
 
-  @tfu.scoped
   def build_summaries(self):
     self._summaries = self._build_summaries()
 
-  @tfu.scoped
   def build_sync_op(self):
     self._sync_op = self._build_sync_op()
 

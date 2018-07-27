@@ -1,6 +1,5 @@
 import abc
 from collections import defaultdict
-import contextlib
 import functools
 from logging import getLogger
 
@@ -128,36 +127,8 @@ def huber_loss(x, delta=1.0):
     )
 
 
-@contextlib.contextmanager
-def variable_and_name_scopes(scope):
-  """ Restores both variable and name scopes.
-
-    Both scopes might need to be restored to allow continuation of building
-    process. Restoring only variable scope might lead to the creation of
-    new name scope which is not desirable in some cases.
-  """
-  # Manually reopen name_scope inside variable_scope of
-  # the algorithm. See https://github.com/tensorflow/tensorflow/issues/6189.
-  # This is also the way it is done in tf.layers.base.
-  with tf.variable_scope(scope) as restored,\
-      tf.name_scope(scope.original_name_scope):
-    yield restored
-
-
-def scoped(func):
-  """ Decorator that adds variable and name scope for function of a class.
-
-  The class need to have `scope` property of type `tf.VariableScope`. This
-  variable scope will be restored together with the underlying name scope.
-  """
-  def _scoped(self, *args, **kwargs):
-    with variable_and_name_scopes(self.scope):
-      return func(self, *args, **kwargs)
-  return _scoped
-
-
-class NetworkStructure(abc.ABC):
-  """ Conceptually separate structure in tensorflow graph. """
+class BuildInterface(abc.ABC):
+  """ Interface for building parts of tensorflow graphs. """
   def __init__(self, name=None):
     self._is_built = False
     self._name = name or self.__class__.__name__
@@ -167,12 +138,12 @@ class NetworkStructure(abc.ABC):
     self._after_build_hooks = []
 
   @property
-  def scope(self):
-    return self._scope
-
-  @property
   def is_built(self):
     return self._is_built
+
+  @property
+  def scope(self):
+    return self._scope
 
   def add_before_build_hook(self, hook):
     self._before_build_hooks.append(hook)
@@ -180,16 +151,17 @@ class NetworkStructure(abc.ABC):
   def add_after_build_hook(self, hook):
     self._after_build_hooks.append(hook)
 
-  @scoped
   def build(self, *args, **kwargs):
-    if not self.is_built:
-      logger.info("Building {}".format(self._name))
-      for hook in self._before_build_hooks:
-        hook(self, *args, **kwargs)
-      self._build(*args, **kwargs)
-      self._is_built = True
-      for hook in self._after_build_hooks:
-        hook(self, *args, **kwargs)
+    with tf.variable_scope(self._scope),\
+        tf.name_scope(self.scope.original_name_scope):
+      if not self.is_built:
+        logger.info("Building {}".format(self._name))
+        for hook in self._before_build_hooks:
+          hook(self, *args, **kwargs)
+        self._build(*args, **kwargs)
+        self._is_built = True
+        for hook in self._after_build_hooks:
+          hook(self, *args, **kwargs)
 
   @abc.abstractmethod
   def _build(self):

@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from .base import BaseAlgorithm
-from rl.utils.tf_utils import huber_loss, scoped
+from rl.utils.tf_utils import huber_loss
 
 
 __all__ = ["DQNAlgorithm"]
@@ -81,7 +81,6 @@ class DQNAlgorithm(BaseAlgorithm):
       summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope=scope.name)
       return tf.summary.merge(summaries)
 
-  @scoped
   def build_target_update_ops(self):
     policy = self.local_or_global_policy
     self._target_update_ops = tf.group(*[
