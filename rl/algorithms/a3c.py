@@ -102,7 +102,7 @@ class A3CAlgorithm(BaseAlgorithm):
       summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope=scope.name)
       return tf.summary.merge(summaries)
 
-  def _get_feed_dict(self, sess, summary_time=False):
+  def _get_feed_dict(self, sess, summaries=False):
     sess.run(self.sync_ops)
     trajectory = self._interactions_producer.next()
     advantages, value_targets = self._advantage_estimator(trajectory,

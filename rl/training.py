@@ -183,8 +183,8 @@ class DistributedTrainer(object):
       feed_dict = {}
 
     if algorithm is not None:
-      algorithm_feed_dict = algorithm.get_feed_dict(
-          sess, summary_time=summary_time)
+      algorithm_feed_dict = algorithm.get_feed_dict(sess,
+                                                    summaries=summary_time)
     else:
       algorithm_feed_dict = {}
 

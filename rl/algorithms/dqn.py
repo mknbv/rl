@@ -94,7 +94,7 @@ class DQNAlgorithm(BaseAlgorithm):
     super(DQNAlgorithm, self)._build(*args, **kwargs)
     self.build_target_update_ops()
 
-  def _get_feed_dict(self, sess, summary_time=False):
+  def _get_feed_dict(self, sess, summaries=False):
     step = sess.run(tf.train.get_global_step())
     if step > 0 and self._target_update_step is None:
       # Training was restored.

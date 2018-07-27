@@ -67,8 +67,8 @@ class BaseAlgorithm(BuildInterface):
   def build_sync_op(self):
     self._sync_op = self._build_sync_op()
 
-  def get_feed_dict(self, sess, summary_time=False):
-    return self._get_feed_dict(sess, summary_time=summary_time)
+  def get_feed_dict(self, sess, summaries=False):
+    return self._get_feed_dict(sess, summaries=summaries)
 
   def _build(self, optimizer, worker_device=None, device_setter=None):
     """ Adds all the variables and ops needed by this algorithm.
@@ -126,5 +126,5 @@ class BaseAlgorithm(BuildInterface):
     ...
 
   @abc.abstractmethod
-  def _get_feed_dict(self, sess, summary_time=False):
+  def _get_feed_dict(self, sess, summaries=False):
     ...

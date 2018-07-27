@@ -165,7 +165,7 @@ class PPO2Algorithm(BaseAlgorithm):
                            self._trajectory.items()):
       self._trajectory[key] = val[indices]
 
-  def _get_feed_dict(self, sess, summary_time=False):
+  def _get_feed_dict(self, sess, summaries=False):
     sess.run(self.sync_op)
 
     epoch_update = self._minibatch_count == self._num_minibatches
