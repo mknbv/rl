@@ -30,7 +30,7 @@ class PPO2Algorithm(BaseAlgorithm):
     self._minibatch_count = 0
     self._trajectory = None
     if advantage_estimator == USE_DEFAULT:
-      advantage_estimator = GAE(self.local_or_global_policy, normalize=True)
+      advantage_estimator = GAE(self.acting_policy, normalize=True)
     self._advantage_estimator = advantage_estimator
     self._cliprange = cliprange
     self._value_loss_coef = value_loss_coef
@@ -60,7 +60,7 @@ class PPO2Algorithm(BaseAlgorithm):
                                               name="old_value_preds")
 
     with tf.variable_scope("policy"):
-      policy = self.local_or_global_policy
+      policy = self.acting_policy
       logp = policy.distribution.log_prob(self._actions_ph)
 
       self._ratio = tf.exp(logp - self._old_log_prob_ph)
@@ -99,7 +99,7 @@ class PPO2Algorithm(BaseAlgorithm):
 
   def _build_train_op(self, optimizer):
     self._loss_gradients = tf.gradients(self.loss,
-                                        self.local_or_global_policy.var_list())
+                                        self.acting_policy.var_list())
     if self._max_grad_norm is not None:
       gradients, _ = tf.clip_by_global_norm(self._loss_gradients,
                                             self._max_grad_norm)
@@ -110,7 +110,7 @@ class PPO2Algorithm(BaseAlgorithm):
 
   def _build_summaries(self):
     with tf.variable_scope("summaries"):
-      policy = self.local_or_global_policy
+      policy = self.acting_policy
       tf.summary.scalar("policy_entropy",
                         tf.reduce_mean(policy.distribution.entropy()))
       tf.summary.scalar("policy_norm", tf.global_norm(policy.var_list()))
@@ -138,8 +138,7 @@ class PPO2Algorithm(BaseAlgorithm):
 
   def _pick_state_inputs(self, indices):
     state = self._trajectory["state"]
-    policy = self.local_or_global_policy
-    if policy.state_inputs not in state:
+    if self.acting_policy.state_inputs not in state:
       raise ValueError("Trajectory does not contain policy state inputs")
     state_inputs = state[policy.state_inputs]
     if isinstance(state_inputs, np.ndarray):
@@ -154,12 +153,11 @@ class PPO2Algorithm(BaseAlgorithm):
   def _shuffle_trajectory(self):
     nenvs = self._interactions_producer.num_envs
     env_steps = self._trajectory["state"]["env_steps"]
-    policy = self.local_or_global_policy
-    if policy.state_inputs is None:
+    if self.acting_policy.state_inputs is None:
       indices = np.random.permutation(env_steps)
     else:
       env_indices = np.random.permutation(nenvs)
-      self._trajectory["state"][policy.state_inputs] =\
+      self._trajectory["state"][self.acting_policy.state_inputs] =\
           self._pick_state_inputs(env_indices)
       indices = np.ravel(env_indices + np.arange(0, env_steps, nenvs)[:, None])
 
@@ -188,7 +186,7 @@ class PPO2Algorithm(BaseAlgorithm):
 
     env_steps = self._trajectory["state"]["env_steps"]
     nenvs = self._interactions_producer.num_envs
-    policy = self.local_or_global_policy
+    policy = self.acting_policy
     if policy.state_inputs is None:
       minibatch_size = (self._interactions_producer.batch_size
                         // self._num_minibatches)

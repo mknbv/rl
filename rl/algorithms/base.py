@@ -31,7 +31,7 @@ class BaseAlgorithm(BuildInterface):
     return self._global_policy
 
   @property
-  def local_or_global_policy(self):
+  def acting_policy(self):
     return self._local_policy or self._global_policy
 
   @property

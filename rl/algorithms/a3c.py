@@ -24,8 +24,7 @@ class A3CAlgorithm(BaseAlgorithm):
     super(A3CAlgorithm, self).__init__(global_policy, local_policy, name=name)
     self._interactions_producer = interactions_producer
     if advantage_estimator == USE_DEFAULT:
-      advantage_estimator = ActorCriticAdvantage(
-          policy=self.local_or_global_policy)
+      advantage_estimator = ActorCriticAdvantage(policy=self.acting_policy)
     self._advantage_estimator = advantage_estimator
     self._entropy_coef = entropy_coef
     self._value_loss_coef = value_loss_coef
@@ -39,7 +38,7 @@ class A3CAlgorithm(BaseAlgorithm):
       }
 
   def _build_loss(self, worker_device=None, device_setter=None):
-    policy = self.local_or_global_policy
+    policy = self.acting_policy
     act_type = self._interactions_producer.action_space.dtype
     act_shape = (None,) + self._interactions_producer.action_space.shape
     self._actions = tf.placeholder(act_type, act_shape, name="actions")
@@ -55,7 +54,7 @@ class A3CAlgorithm(BaseAlgorithm):
         )
       with tf.name_scope("value_loss"):
         self._value_loss = tf.reduce_sum(tf.square(
-            self.local_or_global_policy.critic_tensor
+            acting_policy.critic_tensor
             - self._value_targets
         ))
       loss = self._policy_loss + self._value_loss_coef * self._value_loss
@@ -63,7 +62,7 @@ class A3CAlgorithm(BaseAlgorithm):
 
   def _build_train_op(self, optimizer):
     self._loss_gradients =\
-        tf.gradients(self._loss, self.local_or_global_policy.var_list())
+        tf.gradients(self._loss, self.acting_policy.var_list())
     if self._max_grad_norm is None:
       preprocessed_gradients = self._global_policy.preprocess_gradients(
           self._loss_gradients)
@@ -80,7 +79,7 @@ class A3CAlgorithm(BaseAlgorithm):
 
   def _build_summaries(self):
     with tf.variable_scope("summaries") as scope:
-      policy = self.local_or_global_policy
+      policy = self.acting_policy
       tf.summary.scalar(
           "critic_explained_variance",
           explained_variance(
@@ -109,12 +108,12 @@ class A3CAlgorithm(BaseAlgorithm):
     advantages, value_targets = self._advantage_estimator(trajectory,
                                                           sess=sess)
     feed_dict = {
-        self.local_or_global_policy.observations: trajectory["observations"],
+        self.acting_policy.observations: trajectory["observations"],
         self._actions: trajectory["actions"],
         self._advantages: advantages,
         self._value_targets: value_targets
     }
-    policy = self.local_or_global_policy
+    policy = self.acting_policy
     if policy.state_inputs is not None:
       feed_dict[policy.state_inputs] = trajectory["state"][policy.state_inputs]
     return feed_dict

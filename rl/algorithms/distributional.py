@@ -17,28 +17,28 @@ class DistributionalAlgorithm(DQNAlgorithm):
     self._kind = kind
 
   def _build_loss(self):
-    policy = self.local_or_global_policy
     self._actions_ph = tf.placeholder(tf.int32, [None], name="actions")
     self._rewards_ph = tf.placeholder(tf.float32, [None], name="rewards")
     self._resets_ph = tf.placeholder(tf.float32, [None], name="resets")
 
     with tf.variable_scope("loss"):
       with tf.variable_scope("predictions"):
-        self._predictions = slice_with_actions(policy.output_tensor,
-                                               self._actions_ph)
+        self._predictions = slice_with_actions(
+            self.acting_policy.output_tensor, self._actions_ph)
 
       with tf.variable_scope("targets"):
         self._next_actions = tf.cast(
-            tf.argmax(policy.target.values, axis=-1), tf.int32)
+            tf.argmax(self.acting_policy.target.values, axis=-1), tf.int32)
         all_next_step_predictions = slice_with_actions(
-            policy.target.output_tensor, self._next_actions)
+            self.acting_policy.target.output_tensor, self._next_actions)
         next_step_multiplier = (1 - self._resets_ph)[...,None]
         self._next_step_predictions = (
             next_step_multiplier * self._gamma * all_next_step_predictions)
-        self._targets = self._rewards_ph[...,None] + self._next_step_predictions
+        self._targets = (self._rewards_ph[...,None]
+                         + self._next_step_predictions)
 
       with tf.variable_scope("quantile_loss"):
-        nbins = policy.output_tensor.shape[-1].value
+        nbins = self.acting_policy.output_tensor.shape[-1].value
         cdf = np.arange(0, nbins+1) / nbins
         midpoints = (cdf[:-1] + cdf[1:]) / 2
         overestimation = tf.to_float(
