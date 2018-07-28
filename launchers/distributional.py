@@ -111,7 +111,7 @@ def train(env_id, arg_list=None):
       ubyte_rescale=True
   )
 
-  experience_replay = rl.data.ExperienceReplay(
+  experience_replay = rl.data.UniformExperienceReplay(
       env, policy,
       experience_size=int(1e6),
       experience_start_size=int(5e4),
@@ -175,11 +175,11 @@ def train(env_id, arg_list=None):
       step, _ = trainer.step(algorithm=algorithm, fetches=[inc_step])
       if (last_checkpoint_step is None\
           or step - last_checkpoint_step >= int(1e6))\
-          and experience_replay.experience.latest()["reset"]:
+          and experience_replay.storage.latest()["reset"]:
         running_model_saver.save(sess.raw_session(),
                                  os.path.join(args.logdir, "model.ckpt"),
                                  global_step=step)
-        experience_replay.experience.save(
+        experience_replay.storage.save(
             os.path.join(args.logdir, "experience.pickle"))
         last_checkpoint_step = step - step % int(1e6)
       if last_evaluation_step is None\
