@@ -175,6 +175,7 @@ class DistributedTrainer(object):
       run_fetches["fetches"] = fetches
     if algorithm is not None:
       run_fetches["train_op"] = algorithm.train_op
+      run_fetches["state_fetches"] = algorithm.state_fetches
       if summary_time:
         run_fetches["logging"] = algorithm.logging_fetches
         run_fetches["summaries"] = algorithm.summaries
@@ -200,6 +201,9 @@ class DistributedTrainer(object):
     if summary_time:
       logger.info("Step #{}, {}".format(step, values["logging"]))
       self._summary_manager.add_summary(values["summaries"], step=step)
+
+    if algorithm is not None:
+      algorithm.update_state(values["state_fetches"])
 
     if "fetches" in values:
       return step, values["fetches"]

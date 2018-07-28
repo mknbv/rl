@@ -35,6 +35,10 @@ class BaseAlgorithm(BuildInterface):
     return self._local_policy or self._global_policy
 
   @property
+  def state_fetches(self):
+    return {}
+
+  @property
   @abc.abstractmethod
   def logging_fetches(self):
     ...
@@ -69,6 +73,9 @@ class BaseAlgorithm(BuildInterface):
 
   def get_feed_dict(self, sess, summaries=False):
     return self._get_feed_dict(sess, summaries=summaries)
+
+  def update_state(self, values):
+    self._update_state(values)
 
   def _build(self, optimizer, worker_device=None, device_setter=None):
     """ Adds all the variables and ops needed by this algorithm.
@@ -128,3 +135,6 @@ class BaseAlgorithm(BuildInterface):
   @abc.abstractmethod
   def _get_feed_dict(self, sess, summaries=False):
     ...
+
+  def _update_state(self, values):
+    pass
