@@ -47,8 +47,11 @@ class BasePolicy(BuildInterface):
     pass
 
   @abc.abstractmethod
-  def act(self, observation, sess=None):
+  def act(self, obs, sess=None):
     ...
+
+  def get_single_action(self, ob, sess):
+    return self.act(ob[None], sess=sess)["actions"][0]
 
   def var_list(self):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
