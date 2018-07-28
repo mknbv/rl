@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from .base import BaseAlgorithm
-from rl.utils.tf_utils import huber_loss
+from rl.data.experience_replay import PrioritizedExperienceReplay
 
 
 __all__ = ["DQNAlgorithm"]
@@ -35,10 +35,18 @@ class DQNAlgorithm(BaseAlgorithm):
   def logging_fetches(self):
     return {"loss": self.loss}
 
+  @property
+  def state_fetches(self):
+    if isinstance(self._experience_replay, PrioritizedExperienceReplay):
+      return {"td_errors": self._td_errors}
+    else:
+      return {}
+
   def _build_loss(self):
     self._actions_ph = tf.placeholder(tf.int32, [None], name="actions")
     self._rewards_ph = tf.placeholder(tf.float32, [None], name="rewards")
     self._resets_ph = tf.placeholder(tf.float32, [None], name="resets")
+    self._weights_ph = tf.placeholder(tf.float32, [None], name="weights")
 
     with tf.variable_scope("loss"):
       num_observations = tf.shape(self.acting_policy.observations)[0]
@@ -61,7 +69,12 @@ class DQNAlgorithm(BaseAlgorithm):
             (1 - self._resets_ph) * self._gamma * next_step_predictions)
         self._targets = self._rewards_ph + self._next_step_predictions
 
-        loss = tf.reduce_mean(huber_loss(self._targets - self._predictions))
+        self._td_errors = tf.clip_by_value(
+            self._targets - self._predictions, -1, 1)
+        loss = -tf.reduce_sum(
+            self._weights_ph
+            * tf.stop_gradient(self._td_errors) * self._predictions,
+            axis=-1)
         tf.assert_scalar(loss)
         return loss
 
@@ -114,7 +127,7 @@ class DQNAlgorithm(BaseAlgorithm):
       logger.info("Updating target policy on step #{}".format(step))
       sess.run(self._target_update_ops)
       self._target_update_step = step
-    experience = self._experience_replay.next()
+    self._experience_sample = experience = self._experience_replay.next()
     policy = self.acting_policy
     observations = experience["observations"]
     if self._double:
@@ -126,5 +139,12 @@ class DQNAlgorithm(BaseAlgorithm):
         self._rewards_ph: experience["rewards"],
         self._resets_ph: experience["resets"].astype(np.float32),
         policy.target.observations: experience["next_observations"],
+        self._weights_ph: experience.get("weights", [1])
     }
     return feed_dict
+
+  def _update_state(self, values):
+    if isinstance(self._experience_replay, PrioritizedExperienceReplay):
+      assert "td_errors" in values, values.keys()
+      self._experience_replay.update_priorities(
+          self._experience_sample["indices"], np.abs(values["td_errors"]))
