@@ -21,13 +21,14 @@ def slice_with_actions(tensor, actions):
 
 class DQNAlgorithm(BaseAlgorithm):
   def __init__(self, policy, experience_replay, target_update_period,
-               gamma=0.99, name=None):
+               double=True, gamma=0.99, name=None):
     super(DQNAlgorithm, self).__init__(global_policy=policy,
                                        local_policy=None,
                                        name=name)
     self._experience_replay = experience_replay
     self._target_update_step = None
     self._target_update_period = target_update_period
+    self._double = double
     self._gamma = gamma
 
   @property
@@ -40,13 +41,22 @@ class DQNAlgorithm(BaseAlgorithm):
     self._resets_ph = tf.placeholder(tf.float32, [None], name="resets")
 
     with tf.variable_scope("loss"):
+      num_observations = tf.shape(self.acting_policy.observations)[0]
       with tf.variable_scope("predictions"):
-        self._predictions = slice_with_actions(self.acting_policy.values,
-                                               self._actions_ph)
+        values = self.acting_policy.values
+        if self._double:
+          values = values[:num_observations // 2]
+        self._predictions = slice_with_actions(values, self._actions_ph)
 
       with tf.variable_scope("targets"):
-        next_step_predictions = tf.reduce_max(
-            self.acting_policy.target.values, axis=-1)
+        if self._double:
+          values = self.acting_policy.values[num_observations // 2:]
+          actions = tf.cast(tf.argmax(values, axis=-1), tf.int32)
+          next_step_predictions = slice_with_actions(
+              self.acting_policy.target.values, actions)
+        else:
+          next_step_predictions = tf.reduce_max(
+              self.acting_policy.target.values, axis=-1)
         self._next_step_predictions = (
             (1 - self._resets_ph) * self._gamma * next_step_predictions)
         self._targets = self._rewards_ph + self._next_step_predictions
@@ -106,8 +116,12 @@ class DQNAlgorithm(BaseAlgorithm):
       self._target_update_step = step
     experience = self._experience_replay.next()
     policy = self.acting_policy
+    observations = experience["observations"]
+    if self._double:
+      observations = np.vstack([experience["observations"],
+                                experience["next_observations"]])
     feed_dict = {
-        policy.observations: experience["observations"],
+        policy.observations: observations,
         self._actions_ph: experience["actions"],
         self._rewards_ph: experience["rewards"],
         self._resets_ph: experience["resets"].astype(np.float32),
