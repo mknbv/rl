@@ -26,7 +26,7 @@ def purge_orphaned_summaries(summary_writer, step):
 
 
 def read_events(event_filename, data=None, purge_orphaned=True):
-  data = data or defaultdict(dict)
+  data = data if data is not None else defaultdict(dict)
   for e in tf.train.summary_iterator(event_filename):
     if purge_orphaned and e.session_log.status == tf.SessionLog.START:
       for tag in data.keys():
