@@ -6,6 +6,10 @@ import gym
 import gym.spaces as spaces
 import numpy as np
 cv2.ocl.setUseOpenCL(False)
+try:
+  from gym.envs import atari
+except gym.error.DependencyNotInstalled:
+  atari = None
 
 
 class ImageCropping(gym.ObservationWrapper):
@@ -106,8 +110,7 @@ class ImagePreprocessing(gym.ObservationWrapper):
 
 class UniverseStarter(gym.ObservationWrapper):
   def __init__(self, env, keepdims=True):
-    from gym.envs.atari import AtariEnv
-    if not isinstance(env.unwrapped, AtariEnv):
+    if atari is None or not isinstance(env.unwrapped, atari.AtariEnv):
       raise TypeError("env must be an AtariEnv")
     super(UniverseStarter, self).__init__(env)
     self.env = ImageCropping(env, 34, 0, 160, 160)
@@ -133,7 +136,7 @@ class UniverseStarter(gym.ObservationWrapper):
 
 class MaxBetweenFrames(gym.ObservationWrapper):
   def __init__(self, env):
-    if isinstance(env.unwrapped, gym.envs.atari.AtariEnv) and\
+    if atari is not None and isinstance(env.unwrapped, atari.AtariEnv) and\
         "NoFrameskip" not in env.spec.id:
       raise TypeError("MaxBetweenFrames requires NoFrameskip in Atari env id")
     super(MaxBetweenFrames, self).__init__(env)
@@ -205,7 +208,7 @@ class LazyFrames(object):
 class SkipFrames(gym.ObservationWrapper):
   def __init__(self, env, nskip=4):
     super(SkipFrames, self).__init__(env)
-    if isinstance(env.unwrapped, gym.envs.atari.AtariEnv) and\
+    if atari is not None and isinstance(env.unwrapped, atari.AtariEnv) and\
         "NoFrameskip" not in env.spec.id:
       raise TypeError("SkipFrames requires NoFrameskip in atari env id")
     self._nskip = nskip
