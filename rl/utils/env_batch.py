@@ -60,7 +60,15 @@ class EnvBatch(Env):
   def envs(self):
     return self._envs
 
+  def _check_actions(self, actions):
+    if not len(actions) == self.num_envs:
+      raise ValueError(
+          "number of actions is not equal to number of envs: "
+          "len(actions) = {}, num_envs = {}"
+          .format(len(actions), self.num_envs))
+
   def step(self, actions):
+    self._check_actions(actions)
     obs, rews, resets, infos = [], [], [], []
     for env, action in zip(self._envs, actions):
       ob, rew, done, info = env.step(action)
@@ -91,6 +99,7 @@ class SingleEnvBatch(Wrapper, EnvBatch):
     return [self.env]
 
   def step(self, actions):
+    self._check_actions(actions)
     ob, rew, done, info = self.env.step(actions[0])
     if done:
       ob = self.env.reset()
@@ -166,6 +175,7 @@ class ParallelEnvBatch(EnvBatch):
     return self._num_envs
 
   def step(self, actions):
+    self._check_actions(actions)
     for conn, a in zip(self._parent_connections, actions):
       conn.send(("step", a))
     results = [conn.recv() for conn in self._parent_connections]
