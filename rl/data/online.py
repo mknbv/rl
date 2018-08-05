@@ -4,74 +4,26 @@ import numpy as np
 import tensorflow as tf
 
 from rl.utils.env_batch import EnvBatch, SingleEnvBatch
+from .base import BaseInteractionsProducer
 
 
-class BaseInteractionsProducer(abc.ABC):
-  def __init__(self, env, policy, batch_size, env_step=None):
-    self._env = env
-    self._policy = policy
-    self._batch_size = batch_size
-    if env_step is None:
-      env_step = tf.train.get_or_create_global_step()
-    self._env_step = env_step
-    self._elapsed_steps_ph = tf.placeholder(self._env_step.dtype, [],
-                                            name="elapsed_steps")
-    self._updated_env_step = self._env_step.assign_add(self._elapsed_steps_ph)
-    self._summary_manager = None
-
-  @property
-  def batch_size(self):
-    return self._batch_size
-
-  @property
-  def observation_space(self):
-    return self._env.observation_space
-
-  @property
-  def action_space(self):
-    return self._env.action_space
-
-  @property
-  def env_step(self):
-    return self._env_step
-
-  @property
-  def summary_manager(self):
-    return self._summary_manager
-
-  @abc.abstractmethod
-  def start(self, session, summary_manager=None):
-    if not self._policy.is_built:
-      raise ValueError("Policy must be built before calling start")
-    self._session = session
-    self._summary_manager = summary_manager
-
-  def _update_env_step(self, elapsed_steps):
-    return self._session.run(self._updated_env_step,
-                             {self._elapsed_steps_ph: elapsed_steps})
-
-  @abc.abstractmethod
-  def next(self):
-    ...
-
-
-class OnlineInteractionsProducer(BaseInteractionsProducer):
+class OnlineProducer(BaseInteractionsProducer):
   def __init__(self, env, policy, batch_size, cutoff=True, env_step=None):
     if not isinstance(env, EnvBatch):
       env = SingleEnvBatch(env)
     if batch_size % env.num_envs != 0:
       raise ValueError("env.num_envs = {} does not divide batch_size = {}"
                        .format(env.num_envs, batch_size))
-    super(OnlineInteractionsProducer, self).__init__(env, policy, batch_size,
-                                                     env_step=env_step)
+    super(OnlineProducer, self).__init__(env, policy, batch_size,
+                                         env_step=env_step)
     self._cutoff = cutoff
 
   @property
   def num_envs(self):
     return self._env.num_envs
 
-  def start(self, session, summary_manager=None):
-    super(OnlineInteractionsProducer, self).start(session, summary_manager)
+  def start(self, session, env_summary_manager=None):
+    super(OnlineProducer, self).start(session, env_summary_manager)
 
     self._state = {"latest_observations": self._env.reset()}
     obs_shape = ((self.batch_size,)
@@ -112,12 +64,11 @@ class OnlineInteractionsProducer(BaseInteractionsProducer):
 
       if np.any(resets):
         self._policy.reset(resets)
-        if self.summary_manager is not None:
+        if self.env_summary_manager is not None:
           env_step = self._session.run(self.env_step) + i + self.num_envs
-          if self.summary_manager.summary_time(env_step):
-            for info in np.asarray(infos)[resets]:
-              self.summary_manager.add_summary_dict(
-                  info.get("summaries", info), step=env_step)
+          if self.env_summary_manager.summary_time(env_step):
+            infos = list(zip(resets.nonzero()[0], np.asarray(infos)[resets]))
+            self.env_summary_manager.add_env_summary(infos, step=env_step)
 
         if self._cutoff:
           self._state["env_steps"] = i + self.num_envs

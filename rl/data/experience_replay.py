@@ -5,7 +5,7 @@ from gym import spaces
 import numpy as np
 import tensorflow as tf
 
-from .interactions_producer import BaseInteractionsProducer
+from .base import BaseInteractionsProducer
 
 logger = getLogger("rl")
 
@@ -143,8 +143,8 @@ class ExperienceReplay(BaseInteractionsProducer):
     logger.info("Restoring experience from {}".format(fname))
     self._experience = Experience.fromfile(fname)
 
-  def start(self, sess, summary_manager=None):
-    super(ExperienceReplay, self).start(sess, summary_manager)
+  def start(self, sess, env_summary_manager=None):
+    super(ExperienceReplay, self).start(sess, env_summary_manager)
     self._latest_observation = self._env.reset()
     if self._experience is not None:
       # Experience was restored.
@@ -181,11 +181,10 @@ class ExperienceReplay(BaseInteractionsProducer):
       self._experience.put(obs, action, reward, done)
       if done:
         self._latest_observation = self._env.reset()
-        if self._summary_manager is not None:
+        if self.env_summary_manager is not None:
           env_step = self._session.run(self.env_step) + i
-          if self._summary_manager.summary_time(step=env_step):
-            self._summary_manager.add_summary_dict(
-                info.get("summaries", info), step=env_step)
+          if self.env_summary_manager.summary_time(step=env_step):
+            self.env_summary_manager.add_env_summary(info, step=env_step)
 
     sample = self._experience.sample(self._batch_size)
     self._update_env_step(self._nsteps)
