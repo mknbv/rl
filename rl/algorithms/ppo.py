@@ -188,8 +188,7 @@ class PPO2Algorithm(BaseAlgorithm):
     nenvs = self._interactions_producer.num_envs
     policy = self.acting_policy
     if policy.state_inputs is None:
-      minibatch_size = (self._interactions_producer.batch_size
-                        // self._num_minibatches)
+      minibatch_size = env_steps // self._num_minibatches
       minibatch_start = self._minibatch_count * minibatch_size
       minibatch_indices = np.arange(minibatch_start,
                                     min(minibatch_start + minibatch_size,
