@@ -53,6 +53,18 @@ class BasePolicy(BuildInterface):
   def act(self, observation, sess=None):
     ...
 
+  def get_feed_dict(self, observations, state_inputs=None):
+    if state_inputs is not None and self.state_inputs is None:
+      raise ValueError("state_inputs argument is not None, "
+                       "but the policy is not implemented as recurrent")
+
+    feed_dict = {self.observations: observations}
+    if self.state_inputs is not None:
+      if state_inputs is None:
+        state_inputs = self.state_values
+      feed_dict[self.state_inputs] = state_inputs
+    return feed_dict
+
   def var_list(self):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                              scope=self.scope.name + "/")
