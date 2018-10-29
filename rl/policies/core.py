@@ -1,4 +1,5 @@
 import abc
+from copy import deepcopy
 
 import numpy as np
 import tensorflow as tf
@@ -40,6 +41,8 @@ class BasePolicy(BuildInterface):
     kwargs.update({"name": name + "_global"})
     global_ = cls(*args, **kwargs)
     kwargs.update({"name": name + "_local"})
+    if "core" in kwargs:
+      kwargs["core"] = deepcopy(kwargs["core"])
     local = cls(*args, **kwargs)
     return global_, local
 
