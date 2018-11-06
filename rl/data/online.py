@@ -42,6 +42,7 @@ class OnlineProducer(BaseInteractionsProducer):
 
     if self._policy.state_inputs is not None:
       self._state[self._policy.state_inputs] = self._policy.state_values
+    self._policy.reset()
 
   def next(self):
     observations = self._trajectory["observations"]

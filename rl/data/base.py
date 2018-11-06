@@ -70,7 +70,7 @@ class EnvSummaryManager(SummaryManager):
 class EnvBatchSingleSummaryManager(EnvSummaryManager):
   def __init__(self, index=None, logdir=None, summary_writer=None,
                summary_period=None, last_summary_step=None):
-    super(BatchEnvSingleSummaryManager, self).__init__(
+    super(EnvBatchSingleSummaryManager, self).__init__(
         logdir=logdir,
         summary_writer=summary_writer,
         summary_period=summary_period,
