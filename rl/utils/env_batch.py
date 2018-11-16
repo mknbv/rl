@@ -27,6 +27,10 @@ class SpaceBatch(Space):
   def sample(self):
     return np.stack([space.sample() for space in self.spaces])
 
+  def contains(self, actions):
+    return all(space.contains(actions[i])
+               for i, space in enumerate(self.spaces))
+
   def __getattr__(self, attr):
     return getattr(self.spaces[0], attr)
 

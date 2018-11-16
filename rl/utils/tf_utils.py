@@ -101,20 +101,21 @@ def partial_restore(variables, checkpoint, session=None, scope=None):
 
 def explained_variance(targets, predictions):
   targets, predictions = tf.squeeze(targets), tf.squeeze(predictions)
-  tf.assert_rank_in(targets, [0, 1])
-  tf.assert_rank_in(predictions, [0, 1])
-  var_targets = tf.cond(
-      tf.equal(tf.rank(targets), 0),
-      lambda: tf.constant(0, dtype=tf.float32),
-      lambda: tf.nn.moments(targets, axes=[0])[1]
-  )
-  return tf.cond(
-      tf.equal(var_targets, 0),
-      lambda: tf.constant(np.nan),
-      lambda: (1
-               - tf.nn.moments(targets - predictions, axes=[0])[1]
-               / var_targets)
-  )
+  asserts = [tf.assert_rank_in(targets, [0, 1]),
+             tf.assert_rank_in(predictions, [0, 1])]
+  with tf.control_dependencies(asserts):
+    var_targets = tf.cond(
+        tf.equal(tf.rank(targets), 0),
+        lambda: tf.constant(0, dtype=tf.float32),
+        lambda: tf.nn.moments(targets, axes=[0])[1]
+    )
+    return tf.cond(
+        tf.equal(var_targets, 0),
+        lambda: tf.constant(np.nan),
+        lambda: (1
+                 - tf.nn.moments(targets - predictions, axes=[0])[1]
+                 / var_targets)
+    )
 
 
 def huber_loss(x, delta=1.0):

@@ -12,9 +12,7 @@ class ActorCriticAdvantage(object):
     num_envs = trajectory["state"]["latest_observations"].shape[0]
     value_targets[-num_envs:] = trajectory["rewards"][-num_envs:]
     obs = trajectory["state"]["latest_observations"]
-    feed_dict = {self._policy.observations: obs}
-    if self._policy.state_inputs is not None:
-      feed_dict[self._policy.state_inputs] = self._policy.state_values
+    feed_dict = self._policy.get_feed_dict(obs)
     last_value = sess.run(self._policy.critic_tensor, feed_dict)[:, 0]
     value_targets[-num_envs:] += (
         (1 - trajectory["resets"][-num_envs:]) * self._gamma * last_value)
@@ -50,9 +48,7 @@ class GAE(object):
         - trajectory["critic_values"][-num_envs:,0]
     )
     obs = trajectory["state"]["latest_observations"]
-    feed_dict = {self._policy.observations: obs}
-    if self._policy.state_inputs is not None:
-      feed_dict[self._policy.state_inputs] = self._policy.state_values
+    feed_dict = self._policy.get_feed_dict(obs)
     last_values = sess.run(self._policy.critic_tensor, feed_dict)[:,0]
     gae[-num_envs:] += (
         (1 - trajectory["resets"][-num_envs:]) * self._gamma * last_values)

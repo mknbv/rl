@@ -140,7 +140,7 @@ class PPO2Algorithm(BaseAlgorithm):
     state = self._trajectory["state"]
     if self.acting_policy.state_inputs not in state:
       raise ValueError("Trajectory does not contain policy state inputs")
-    state_inputs = state[policy.state_inputs]
+    state_inputs = state[self.acting_policy.state_inputs]
     if isinstance(state_inputs, np.ndarray):
       return state_inputs[indices]
     elif isinstance(state_inputs, tf.nn.rnn_cell.LSTMStateTuple):
@@ -151,7 +151,7 @@ class PPO2Algorithm(BaseAlgorithm):
                       "state_inputs type: {}".format(type(state_inputs)))
 
   def _shuffle_trajectory(self):
-    nenvs = self._interactions_producer.num_envs
+    nenvs = self.acting_policy.state_inputs.shape[0].value
     env_steps = self._trajectory["state"]["env_steps"]
     if self.acting_policy.state_inputs is None:
       indices = np.random.permutation(env_steps)
@@ -185,7 +185,6 @@ class PPO2Algorithm(BaseAlgorithm):
       self._shuffle_trajectory()
 
     env_steps = self._trajectory["state"]["env_steps"]
-    nenvs = self._interactions_producer.num_envs
     policy = self.acting_policy
     if policy.state_inputs is None:
       minibatch_size = env_steps // self._num_minibatches
@@ -199,6 +198,7 @@ class PPO2Algorithm(BaseAlgorithm):
             "num_minibatches = {} does not divide "
             "interaction_producer.num_envs = {}"
             .format(num_minibatches, interactions_producer.num_envs))
+      nenvs = policy.state_inputs.shape[0].value
       envs_per_sample = nenvs // self._num_minibatches
       env_indices_start = self._minibatch_count * envs_per_sample
       env_indices = np.arange(env_indices_start,
@@ -208,7 +208,6 @@ class PPO2Algorithm(BaseAlgorithm):
 
     self._minibatch_count += 1
     feed_dict = {
-      policy.observations: self._trajectory["observations"][minibatch_indices],
       self._actions_ph: self._trajectory["actions"][minibatch_indices],
       self._value_targets_ph:
         self._trajectory["value_targets"][minibatch_indices],  # noqa: E131
@@ -218,6 +217,12 @@ class PPO2Algorithm(BaseAlgorithm):
         self._trajectory["critic_values"][minibatch_indices],
     }
     if policy.state_inputs is not None:
-      feed_dict[policy.state_inputs] = self._pick_state_inputs(env_indices)
+      state_inputs = self._pick_state_inputs(env_indices)
+    else:
+      state_inputs = None
+    feed_dict.update(policy.get_feed_dict(
+        self._trajectory["observations"][minibatch_indices],
+        state_inputs=state_inputs
+    ))
 
     return feed_dict

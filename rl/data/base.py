@@ -81,7 +81,7 @@ class EnvBatchSingleSummaryManager(EnvSummaryManager):
     for index, info in infos:
       if index is None or index == self._index:
         super(EnvBatchSingleSummaryManager, self).add_env_summary(
-            info, step, session=session)
+              info, step, session=session)
         break
 
 
